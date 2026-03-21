@@ -452,6 +452,7 @@ a {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.25s ease;
+  z-index: 5;
 }
 
 .name-hint::after {
@@ -466,6 +467,23 @@ a {
 
 .name-hint.show {
   opacity: 1;
+}
+
+/* "This is you" highlight ring on own row in a group */
+.my-row-highlight {
+  position: relative;
+  background: rgba(74, 108, 247, 0.06);
+  border-radius: var(--radius-md);
+  padding: 4px 2px;
+  margin: -4px -2px;
+  box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.3);
+  animation: you-glow 2s ease-in-out;
+}
+
+@keyframes you-glow {
+  0% { box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.5), 0 0 12px rgba(74, 108, 247, 0.3); }
+  50% { box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.4), 0 0 18px rgba(74, 108, 247, 0.2); }
+  100% { box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.15); }
 }
 
 .location-row .name-input {
@@ -529,6 +547,74 @@ a {
 .invite-bar {
   margin-top: var(--space-md);
   text-align: center;
+}
+
+.invite-subtext {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* ---------- Group / Real-time ---------- */
+.group-active-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: rgba(74, 108, 247, 0.08);
+  border: 1px solid rgba(74, 108, 247, 0.2);
+  border-radius: var(--radius-md);
+}
+
+.group-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.group-member-count {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.remote-member {
+  position: relative;
+}
+
+.remote-member input {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.remote-member input.remote-set {
+  opacity: 1;
+  font-style: normal;
+}
+
+.remote-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  animation: pulse-live 2s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 /* Autocomplete dropdown */

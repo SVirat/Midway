@@ -121,6 +121,13 @@ create table if not exists public.session_metrics (
   last_heartbeat_at timestamptz default now()
 );
 
+-- 10. Groups (invite link sessions, auto-expire after 12 hours)
+create table if not exists public.groups (
+  code text primary key,
+  created_by text,
+  created_at timestamptz default now()
+);
+
 -- ============================================
 -- Row Level Security (enable is idempotent)
 -- ============================================
@@ -133,6 +140,7 @@ alter table public.analytics_events enable row level security;
 alter table public.api_calls enable row level security;
 alter table public.client_logs enable row level security;
 alter table public.session_metrics enable row level security;
+alter table public.groups enable row level security;
 
 -- ============================================
 -- Policies (skip if already exists)
@@ -215,6 +223,17 @@ do $$ begin
   if not exists (select 1 from pg_policies where policyname = 'Anyone can select session metrics' and tablename = 'session_metrics') then
     create policy "Anyone can select session metrics" on public.session_metrics for select using (true);
   end if;
+
+  -- Groups
+  if not exists (select 1 from pg_policies where policyname = 'Anyone can insert groups' and tablename = 'groups') then
+    create policy "Anyone can insert groups" on public.groups for insert with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Anyone can select groups' and tablename = 'groups') then
+    create policy "Anyone can select groups" on public.groups for select using (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Anyone can delete expired groups' and tablename = 'groups') then
+    create policy "Anyone can delete expired groups" on public.groups for delete using (created_at < now() - interval '12 hours');
+  end if;
 end $$;
 
 -- ============================================
@@ -268,5 +287,6 @@ create index if not exists idx_client_logs_session on public.client_logs(session
 create index if not exists idx_client_logs_anon on public.client_logs(anon_id, created_at desc);
 
 create index if not exists idx_session_metrics_session on public.session_metrics(session_id);
+create index if not exists idx_groups_created_at on public.groups(created_at);
 create index if not exists idx_session_metrics_anon on public.session_metrics(anon_id);
 create index if not exists idx_session_metrics_user on public.session_metrics(user_id);

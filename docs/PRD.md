@@ -1,4 +1,4 @@
-# Midway: Product Requirements Document
+# Midway — Product Requirements Document
 
 **Version:** 1.0  
 **Last Updated:** March 21, 2026  
@@ -40,7 +40,7 @@ Midway is a web app that calculates the optimal meeting spot for any group. User
 - Each input has a label field (person's name) and address field
 - GPS button shows a loading spinner while acquiring location
 - "Add Person" button to add more input rows
-- "Invite Friends to Join Map" share button
+- "Invite Friends to Join" share button
 
 ### 2.2 Vibe Check System
 **Description:** Users specify what kind of venue they're looking for.
@@ -111,8 +111,48 @@ Each venue card provides:
 - **WhatsApp** button — Opens WhatsApp with pre-filled message
 
 **Invite Link:**
-- Generates `mway.vercel.app/join/{sessionId}` link
-- Copies to clipboard for sharing with friends
+- Clicking "Invite Friends to Join" creates a group registered in the `groups` table
+- Generates a clean link: `mway.vercel.app/?group=ABC123`
+- Link is copied to clipboard
+- Group links auto-expire after 12 hours (server-side validation)
+- Invalid or expired links show a toast notification and clean the URL
+
+---
+
+## 2.8 Real-Time Group Sessions
+**Description:** Multiple users can collaboratively build a shared location list in real-time while independently choosing vibes and generating venue results.
+
+**How It Works:**
+1. Any user clicks "Invite Friends to Join Map" to create a group
+2. A unique 6-character group code is generated and stored in the `groups` database table
+3. The invite link (`?group=CODE`) is copied to clipboard for sharing
+4. Friends who open the link join a Supabase Realtime Presence channel
+5. Each member's locations are broadcast to all other members whenever they change
+6. Remote members' locations appear as read-only rows with a green "Live" badge
+
+**Synchronous (shared across all members):**
+- The group member list and all their locations
+- People count in the group bar
+- New member join/leave events
+
+**Individual (per user):**
+- Vibe/category selection
+- Mode toggle (Fair/Eco)
+- Venue search results and rankings
+- Share actions
+
+**UX Details:**
+- "This is you" popup and highlight ring on the user's own row when others are present
+- Combined "This is you. Click to name." tooltip if the name hint fires simultaneously
+- Toast: "New friends have been added since generation" / "Some friends have been removed since generation" if the group changes after results exist
+- Placeholder text reads "Enter your location..." for the user's own row
+
+**Technical:**
+- Uses Supabase Realtime Presence (no additional server infrastructure)
+- Presence payload contains a `people` array with all of a member's local locations
+- On `join` events, existing members re-broadcast their state so new joiners get current data
+- Groups validated against the `groups` table on join; random codes are rejected
+- Expired groups (>12h) are cleaned up on access
 
 ---
 
@@ -179,6 +219,7 @@ Computes the geometric median — the point that minimizes total Euclidean dista
 | `api_calls` | External API call logging (provider, latency) | Insert-only |
 | `client_logs` | Frontend console errors + unhandled exceptions | Insert-only |
 | `session_metrics` | Session duration, time-to-first-action | Upsert by session_id |
+| `groups` | Real-time group session codes with auto-expiry | Insert/select: anyone; delete: expired only |
 
 ### 5.2 Anonymous User Tracking
 - `midway_anon_id` stored in localStorage (UUID)
@@ -200,7 +241,7 @@ Examples: `mode_toggle`, `vibe_select`, `venues_shown`, `venue_selected`, `share
 | Anthropic Messages | AI venue ranking (fallback 2) | API key header |
 | Open-Meteo | Weather at midpoint | None (free) |
 | OSM Nominatim | Fallback reverse geocoding | None (free) |
-| Supabase | Auth + Database | Anon key |
+| Supabase | Auth + Database + Realtime Presence | Anon key |
 
 ---
 
@@ -252,7 +293,7 @@ Examples: `mode_toggle`, `vibe_select`, `venues_shown`, `venue_selected`, `share
 
 ## 9. Future Roadmap
 
-- [ ] Real-time collaborative sessions (multiple users add locations live)
+- [x] Real-time collaborative sessions (multiple users add locations live)
 - [ ] Account deletion / data export (GDPR compliance)
 - [ ] Transit mode (public transport distances)
 - [ ] Saved searches and favorite venues

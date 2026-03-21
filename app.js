@@ -27,6 +27,13 @@ const state = {
   _sortMode: 'closest',
   _allVenues: [],
   meetingTime: null,    // Date object for departure_time
+  // Group / Invite
+  groupId: null,
+  groupCreatedAt: null,
+  groupChannel: null,
+  groupMembers: {},      // memberId -> { name, address, lat, lng }
+  memberId: null,
+  myLocationId: null,    // id of first local location ("You")
 };
 
 // Client-side route cache: key = "lat1,lng1->lat2,lng2" => route result
@@ -198,6 +205,7 @@ function initSession() {
   locationCounter = 0;
   state.autocompletes = {};
   addLocationInput('You', true);
+  state.myLocationId = locationCounter;
   addLocationInput('Friend 1');
 
   updateFindButton();
@@ -250,7 +258,7 @@ function addLocationInput(placeholder, showGeoBtn) {
     <div class="person-avatar" style="background:${color}" onclick="editPersonName(${id}, this)" title="Click to rename">${initials}</div>
     <input type="text" class="name-input" data-name-id="${id}" value="${name}"
            style="display:none" onblur="savePersonName(${id}, this)" onkeydown="if(event.key==='Enter')this.blur()" />
-    <input type="text" placeholder="Enter ${name}'s location..."
+    <input type="text" placeholder="${name === 'You' ? 'Enter your location...' : 'Enter ' + name + "'s location..."}"
            data-id="${id}" autocomplete="off" />
     ${geoButton}
     <button class="btn-remove" onclick="removeLocation(${id})" title="Remove">
@@ -268,6 +276,8 @@ function addLocationInput(placeholder, showGeoBtn) {
   }
 
   updateFindButton();
+  // Broadcast new friend to group
+  if (state.groupId) broadcastMyPresence();
 }
 
 // ---------- Google Maps Link Paste Handler ----------
@@ -500,6 +510,9 @@ function setLocationForId(id, address, lat, lng) {
   updateFindButton();
   showNameHint(id);
   trackEvent('location_set', { personName: getPersonName(id), address: address, lat: lat, lng: lng });
+
+  // Broadcast location change to group
+  if (state.groupId) broadcastMyPresence();
 }
 
 // Show a compact tooltip only on the very first address fill per page load
@@ -519,9 +532,16 @@ function showNameHint(filledId) {
   nameHintFired = true;
   const avatar = row.querySelector('.person-avatar');
   if (!avatar || avatar.querySelector('.name-hint')) return;
+
+  // In a group, combine "This is you" with "Click to name"
+  var inGroup = state.groupId && Object.keys(state.groupMembers).length > 0;
+  var hintText = inGroup ? 'This is you. Click to name.' : 'Click to name';
+  // If showing combined hint, skip the separate "you" popup
+  if (inGroup) row.dataset.youHintShown = '1';
+
   const hint = document.createElement('span');
   hint.className = 'name-hint';
-  hint.textContent = 'Click to name';
+  hint.textContent = hintText;
   avatar.style.position = 'relative';
   avatar.appendChild(hint);
   setTimeout(function() { hint.classList.add('show'); }, 50);
@@ -529,6 +549,36 @@ function showNameHint(filledId) {
     hint.classList.remove('show');
     setTimeout(function() { hint.remove(); }, 300);
   }, 3000);
+}
+
+// Show "This is you" popup and highlight on the user's row when in a group
+let youHintFired = false;
+function showYouHint() {
+  if (youHintFired || !state.groupId) return;
+  if (Object.keys(state.groupMembers).length === 0) return;
+  youHintFired = true;
+
+  var row = document.querySelector('.location-row[data-id="' + state.myLocationId + '"]:not(.remote-member)');
+  if (!row) return;
+
+  // Add highlight ring
+  row.classList.add('my-row-highlight');
+
+  // If the name hint already showed a combined popup, skip
+  if (row.dataset.youHintShown === '1') return;
+
+  var avatar = row.querySelector('.person-avatar');
+  if (!avatar || avatar.querySelector('.name-hint')) return;
+  var hint = document.createElement('span');
+  hint.className = 'name-hint';
+  hint.textContent = 'This is you';
+  avatar.style.position = 'relative';
+  avatar.appendChild(hint);
+  setTimeout(function() { hint.classList.add('show'); }, 50);
+  setTimeout(function() {
+    hint.classList.remove('show');
+    setTimeout(function() { hint.remove(); }, 300);
+  }, 4000);
 }
 
 function getPersonName(id) {
@@ -562,11 +612,14 @@ function savePersonName(id, input) {
 
   // Update placeholder
   const locInput = row.querySelector('input[data-id]');
-  locInput.placeholder = 'Enter ' + newName + "'s location...";
+  locInput.placeholder = newName === 'You' ? 'Enter your location...' : 'Enter ' + newName + "'s location...";
 
   // Update state
   const loc = state.locations.find(l => l.id === id);
   if (loc) loc.name = newName;
+
+  // Broadcast name change to group
+  if (state.groupId) broadcastMyPresence();
 }
 
 function removeLocation(id) {
@@ -580,6 +633,7 @@ function removeLocation(id) {
       state.locations = state.locations.filter(l => l.id !== id);
       delete state.autocompletes[id];
       updateFindButton();
+      if (state.groupId) broadcastMyPresence();
     }, 200);
   }
 }
@@ -767,6 +821,7 @@ function findSweetSpot() {
     state._allVenues = venues;
     state.results = venues.slice(0, 5);
     state.chosenVenue = state.results[0] || null;
+    state._resultsLocationCount = state.locations.length;
 
     // Step 5: Use cached route data when available, otherwise fetch for #1 only
     const destination = state.chosenVenue
@@ -1852,8 +1907,244 @@ function copyShareMessage() {
 }
 
 function copyInviteLink() {
-  const link = 'mway.vercel.app';
-  navigator.clipboard.writeText(link).then(function() { showToast('Invite link copied! Share it with your friends.'); });
+  if (!state.groupId) {
+    if (!_supabaseClient) {
+      var fallback = window.location.origin || 'https://mway.vercel.app';
+      navigator.clipboard.writeText(fallback).then(function() { showToast('Invite link copied!'); });
+      return;
+    }
+    createGroup();
+  }
+  var link = window.location.origin + window.location.pathname + '?group=' + state.groupId;
+  navigator.clipboard.writeText(link).then(function() {
+    showToast('Invite link copied! Share it with your friends.');
+  });
+}
+
+// ---------- Group / Invite (Real-time) ----------
+function generateGroupCode() {
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var code = '';
+  for (var i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+  return code;
+}
+
+function getOrCreateMemberId() {
+  var id = localStorage.getItem('midway_member_id');
+  if (!id) {
+    id = 'mid_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+    localStorage.setItem('midway_member_id', id);
+  }
+  return id;
+}
+
+var GROUP_EXPIRY_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+function initGroup() {
+  var params = new URLSearchParams(window.location.search);
+  var groupId = params.get('group');
+  if (!groupId || !/^[A-Za-z0-9]{4,12}$/.test(groupId)) return;
+
+  function clearGroupUrl() {
+    var url = new URL(window.location.href);
+    url.searchParams.delete('group');
+    window.history.replaceState({}, '', url);
+  }
+
+  // Verify group actually exists in database
+  if (_supabaseClient) {
+    _supabaseClient.from('groups').select('code, created_at').eq('code', groupId).maybeSingle()
+      .then(function(result) {
+        if (!result.data) {
+          showToast('That link does not exist.');
+          clearGroupUrl();
+          return;
+        }
+        // Server-side expiry check
+        var serverCreated = new Date(result.data.created_at).getTime();
+        if (Date.now() - serverCreated > GROUP_EXPIRY_MS) {
+          showToast('This group link has expired.');
+          clearGroupUrl();
+          _supabaseClient.from('groups').delete().eq('code', groupId).then(function() {});
+          return;
+        }
+        state.groupId = groupId;
+        state.groupCreatedAt = serverCreated;
+        state.memberId = getOrCreateMemberId();
+        joinGroupChannel();
+        updateInviteUI();
+      });
+  }
+}
+
+function createGroup() {
+  state.groupId = generateGroupCode();
+  state.groupCreatedAt = Date.now();
+  state.memberId = getOrCreateMemberId();
+  var url = new URL(window.location.href);
+  url.searchParams.set('group', state.groupId);
+  window.history.replaceState({}, '', url);
+
+  // Register group in database
+  if (_supabaseClient) {
+    _supabaseClient.from('groups').insert({ code: state.groupId, created_by: state.memberId }).then(function() {});
+  }
+
+  joinGroupChannel();
+  updateInviteUI();
+  trackEvent('group_create', { groupId: state.groupId });
+}
+
+function joinGroupChannel() {
+  if (!_supabaseClient || !state.groupId || !state.memberId) return;
+
+  if (state.groupChannel) {
+    _supabaseClient.removeChannel(state.groupChannel);
+  }
+
+  state.groupChannel = _supabaseClient.channel('group-' + state.groupId, {
+    config: { presence: { key: state.memberId } }
+  });
+
+  state.groupChannel
+    .on('presence', { event: 'sync' }, function() {
+      var presenceState = state.groupChannel.presenceState();
+      syncGroupMembers(presenceState);
+    })
+    .on('presence', { event: 'join' }, function() {
+      // When someone new joins, re-broadcast so they get our latest state
+      broadcastMyPresence();
+    })
+    .subscribe(function(status) {
+      if (status === 'SUBSCRIBED') {
+        broadcastMyPresence();
+      }
+    });
+}
+
+function broadcastMyPresence() {
+  if (!state.groupChannel) return;
+  var localLocs = state.locations.filter(function(l) { return !l.remote; });
+  var people = localLocs.map(function(l) {
+    return {
+      id: l.id,
+      name: l.name || getPersonName(l.id),
+      address: l.address || null,
+      lat: l.lat || null,
+      lng: l.lng || null,
+    };
+  });
+  state.groupChannel.track({ people: people });
+}
+
+function syncGroupMembers(presenceState) {
+  // Remove old remote locations from state
+  state.locations = state.locations.filter(function(l) { return !l.remote; });
+
+  var newMembers = {};
+  Object.keys(presenceState).forEach(function(key) {
+    if (key === state.memberId) return;
+    var presences = presenceState[key];
+    var p = presences[0];
+    var people = p.people || [];
+    // Backwards compat: if no people array, treat as single person
+    if (people.length === 0 && p.name) {
+      people = [{ name: p.name, address: p.address, lat: p.lat, lng: p.lng }];
+    }
+    newMembers[key] = people;
+    people.forEach(function(person, idx) {
+      if (person.lat && person.lng) {
+        state.locations.push({
+          id: 'remote_' + key + '_' + idx,
+          name: person.name || 'Friend',
+          address: person.address || '',
+          lat: person.lat,
+          lng: person.lng,
+          remote: true,
+        });
+      }
+    });
+  });
+
+  state.groupMembers = newMembers;
+  renderGroupMembers();
+  updateFindButton();
+  updateGroupMemberCount();
+  showYouHint();
+
+  // Warn if results exist but group has changed since generation
+  if (state.results.length > 0 && typeof state._resultsLocationCount === 'number') {
+    var currentCount = state.locations.length;
+    if (currentCount > state._resultsLocationCount) {
+      showToast('New friends have been added since generation');
+      state._resultsLocationCount = currentCount;
+    } else if (currentCount < state._resultsLocationCount) {
+      showToast('Some friends have been removed since generation');
+      state._resultsLocationCount = currentCount;
+    }
+  }
+}
+
+function renderGroupMembers() {
+  document.querySelectorAll('.location-row.remote-member').forEach(function(r) { r.remove(); });
+
+  var list = document.getElementById('locationsList');
+  var memberKeys = Object.keys(state.groupMembers);
+  var localRowCount = document.querySelectorAll('.location-row:not(.remote-member)').length;
+  var colorOffset = localRowCount;
+
+  memberKeys.forEach(function(memberId) {
+    var people = state.groupMembers[memberId];
+    people.forEach(function(person, idx) {
+      var row = document.createElement('div');
+      row.className = 'location-row remote-member';
+      row.dataset.memberId = memberId;
+
+      var colorIdx = (colorOffset++) % AVATAR_COLORS.length;
+      var color = AVATAR_COLORS[colorIdx];
+      var initials = (person.name || 'F').charAt(0).toUpperCase();
+      var locationText = person.address || 'Waiting for location...';
+      var statusClass = person.address ? 'remote-set' : 'remote-waiting';
+
+      row.innerHTML =
+        '<div class="person-avatar" style="background:' + color + '">' + initials + '</div>' +
+        '<input type="text" value="' + locationText.replace(/"/g, '&quot;') + '" disabled class="' + statusClass + '" />' +
+        '<span class="remote-badge"><i class="fa-solid fa-wifi"></i> Live</span>';
+
+      list.appendChild(row);
+    });
+  });
+}
+
+function updateInviteUI() {
+  var bar = document.querySelector('.invite-bar');
+  if (!bar) return;
+
+  if (state.groupId) {
+    var personCount = document.querySelectorAll('.location-row:not(.remote-member)').length;
+    Object.keys(state.groupMembers).forEach(function(key) {
+      personCount += (state.groupMembers[key].length || 1);
+    });
+    bar.innerHTML =
+      '<div class="group-active-bar">' +
+        '<span class="group-badge"><i class="fa-solid fa-users"></i> Group: ' + state.groupId + '</span>' +
+        '<span class="group-member-count" id="groupMemberCount">' + personCount + (personCount === 1 ? ' person' : ' people') + '</span>' +
+        '<button class="btn btn-ghost btn-sm" onclick="copyInviteLink()">' +
+          '<i class="fa-solid fa-copy"></i> Copy Link' +
+        '</button>' +
+      '</div>' +
+      '<p class="invite-subtext">Add friends together while still searching independently.</p>';
+  }
+}
+
+function updateGroupMemberCount() {
+  var el = document.getElementById('groupMemberCount');
+  if (!el) return;
+  var count = 1; // this user
+  Object.keys(state.groupMembers).forEach(function(key) {
+    count += (state.groupMembers[key].length || 1);
+  });
+  el.textContent = count + (count === 1 ? ' person' : ' people');
 }
 
 // ---------- Test Mode ----------
@@ -1913,6 +2204,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renderVibeTags();
   loadGoogleMaps();
   initSupabase();
+  initGroup();
 
   // Feature flag: More Options section
   if (FEATURE_MORE_OPTIONS) {

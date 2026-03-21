@@ -37,6 +37,15 @@ Midway helps groups of friends find the best place to meet. Enter everyone's sta
 - **WhatsApp Share** — Direct share button
 - **Invite Link** — Share a link so friends can join the map session
 
+### Real-Time Group Sessions
+- **Invite Friends** — Creates a unique group link (e.g. `mway.vercel.app/?group=ABC123`) that can be shared with friends
+- **Live Sync** — Friends who open the link join the session in real-time via Supabase Presence; all locations sync across browsers instantly
+- **Independent Searches** — Vibes, categories, and venue results remain individual per user; only the group's locations are shared
+- **"This is you" Indicator** — Highlighted row and popup to identify your own location field when multiple people are in the session
+- **Stale Results Warning** — Toast notification if the group changes after you've generated venue results
+- **Auto-Expiry** — Group links expire after 12 hours; expired/invalid links show a toast and redirect to a fresh session
+- **Verified Groups** — Groups are registered in the database; random/guessed codes will not work
+
 ### Extras
 - **Weather Widget** — Live weather at the midpoint via Open-Meteo
 - **Geolocation** — "Use my location" button (opt-in, not on page load)
@@ -52,7 +61,7 @@ Midway helps groups of friends find the best place to meet. Enter everyone's sta
 | Maps | Leaflet.js 1.9.4 + CARTO tiles |
 | Places | Google Maps JavaScript API (Autocomplete, Nearby Search, Directions, Place Details, Geocoding) |
 | AI | Gemini 2.0 Flash, GPT-4o Mini, Claude Sonnet 4 (serverless cascade) |
-| Auth & DB | Supabase (PostgreSQL + Google OAuth + Row-Level Security) |
+| Auth & DB | Supabase (PostgreSQL + Google OAuth + Row-Level Security + Realtime Presence) |
 | Weather | Open-Meteo API |
 | Backend | Vercel Serverless Functions (Node.js) |
 | Deployment | Vercel |
