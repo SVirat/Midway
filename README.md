@@ -27,10 +27,12 @@ Midway helps groups of friends find the best place to meet. Enter everyone's sta
 - **Interactive Map** — Leaflet.js map with markers for people, venues, and routes
 
 ### Vibe Check
-- **Category Tabs** — Food, Play, Gigs — each with curated vibe tags (e.g. "Rooftop Bar", "Court Sports", "Live Music")
-- **AI Vibe Ranking** — Describe what you want in plain English and an AI agent re-ranks venues to match (Gemini → OpenAI → Claude fallback chain)
+- **Category Tabs** — Food, Play, Gigs — each with curated vibe tags (e.g. "Rooftop Bar", "Court Sports", "Live Music") (available when `FEATURE_MORE_OPTIONS` is enabled)
+- **AI-Powered Search** — Describe what you want in plain English (e.g. "great fries with live music and golf") and an AI agent extracts optimal Google Places search keywords before the venue search begins (Gemini → OpenAI → Claude fallback chain)
+- **Review-Based AI Filtering** — After venues are found, Google reviews are fetched and sent to AI to validate which venues genuinely match your request — not just keyword matches
 - **Smart Category Detection** — AI agent auto-detects the best category from your prompt (e.g. "badminton" → Play, "movie" → Gigs) and switches the toggle automatically
 - **Free-text Search** — When using the AI prompt, venues are found by keyword rather than fixed type, so niche searches (bowling, pickleball, escape rooms) work correctly
+- **Graceful AI Fallback** — If AI tokens are exhausted, the app falls back to simple keyword search automatically — no interruption
 - **No sign-in required** — AI features and all venue options are available to everyone
 
 ### Sharing
@@ -63,7 +65,7 @@ Midway helps groups of friends find the best place to meet. Enter everyone's sta
 | Frontend | Vanilla JS, HTML5, CSS3 |
 | Maps | Leaflet.js 1.9.4 + CARTO tiles |
 | Places | Google Maps JavaScript API (Autocomplete, Nearby Search, Directions, Place Details, Geocoding) |
-| AI | Gemini 2.0 Flash, GPT-4o Mini, Claude Sonnet 4 (serverless cascade) |
+| AI | Gemini 2.0 Flash, GPT-4o Mini, Claude Sonnet 4 (serverless cascade for keyword extraction + review filtering) |
 | Auth & DB | Supabase (PostgreSQL + Google OAuth + Row-Level Security + Realtime Presence) |
 | Security | Rate limiting (server + client), Supabase token auth on AI proxy |
 | Weather | Open-Meteo API |
@@ -140,7 +142,8 @@ The project is Vercel-ready with serverless functions in `api/`:
 ├── setup.js            # Reads .env / process.env → generates config.js
 ├── server.js           # Express server (local dev)
 ├── api/
-│   ├── ai-rank.js      # Vercel serverless: AI ranking endpoint
+│   ├── ai-rank.js      # Vercel serverless: AI ranking/filtering endpoint
+│   ├── ai-keywords.js  # Vercel serverless: AI keyword extraction from prompts
 │   └── resolve-map-link.js  # Vercel serverless: Google Maps link resolver
 ├── assets/             # Logo, favicons, webmanifest
 ├── vercel.json         # Vercel deployment config

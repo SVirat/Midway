@@ -70,11 +70,17 @@ Midway is a web app that calculates the optimal meeting spot for any group. User
 ### 2.4 Venue Discovery & Ranking
 **Flow:**
 1. Calculate geographic center using selected algorithm
-2. Search Google Places Nearby for venues matching the selected category/vibes
-3. Fetch real driving distances from every person to every venue (Google Directions)
-4. Rank venues using Pareto dominance on distances and drive times
-5. (Optional) Re-rank with AI vibe matching if user provided a prompt
-6. Display top 5 venues
+2. (If AI prompt) Send user's natural language prompt to `/api/ai-keywords` — AI extracts optimized Google Places search keyword and type
+3. Search Google Places Nearby for venues using AI-extracted keywords (or VIBE_MAP/raw text fallback)
+4. (If AI prompt) Fetch Google reviews for top candidates via Place Details API, send venue names + review snippets to `/api/ai-rank` for AI-based filtering — venues that don't match the prompt are deprioritized
+5. Fetch real driving distances from every person to every venue (Google Directions)
+6. Rank venues using Pareto dominance on distances and drive times, determined by the selected mode (Fair/Eco)
+7. Display top 5 venues
+
+**AI Fallback Behavior:**
+- If AI keyword extraction fails → uses raw prompt text as Google Places keyword
+- If AI review filtering fails → uses keyword search results as-is
+- If Google Maps quota is exceeded → shows quota popup and uses fallback venues
 
 **Pareto Dominance Ranking:**
 - A venue A dominates venue B if every person's distance to A ≤ distance to B
@@ -194,12 +200,25 @@ Goal: minimize(sum(distance_i))
 ```
 Computes the geometric median — the point that minimizes total Euclidean distance from all inputs. Best for minimizing overall group travel / carbon footprint.
 
-### 4.3 AI Vibe Ranking
-1. Constructs a prompt with venue names, ratings, types, and the user's vibe description
-2. Sends to serverless `/api/ai-rank` endpoint
-3. AI returns a reordered array of venue indices
-4. Client applies the new ordering
-5. Falls back to original ranking if all AI providers fail
+### 4.3 AI Search Pipeline
+The AI is involved at the **search layer**, not the ranking layer. Ranking is always determined by the selected mode (Fair/Eco).
+
+**Step 1: Keyword Extraction** (`/api/ai-keywords`)
+1. User's natural language prompt is sent to the serverless endpoint
+2. AI extracts an optimized Google Places search `keyword` (2-5 words) and a `type` (e.g. "restaurant", "bar")
+3. These are passed directly to `nearbySearch()` for more relevant initial results
+4. Fallback: if AI fails, the raw prompt text is used as the keyword
+
+**Step 2: Review-Based Filtering** (`/api/ai-rank`)
+1. After venues are found, Google Reviews (up to 3 per venue, top 5 venues) are fetched via Place Details API
+2. Venue names, types, ratings, and review snippets are sent to AI
+3. AI returns an ordered list of venue indices that genuinely match the user's request
+4. Venues whose reviews don't confirm a match are deprioritized
+5. Fallback: if AI fails, the keyword search results are used as-is
+
+**Provider Cascade (both endpoints):**
+- Gemini 2.0 Flash (primary) → GPT-4o Mini (fallback 1) → Claude Sonnet 4 (fallback 2)
+- Each provider's success/failure and latency are logged to analytics
 
 ### 4.4 Route Caching
 - Routes cached per-session in memory (`state.routeCache`)
@@ -240,9 +259,9 @@ Examples: `mode_toggle`, `vibe_select`, `venues_shown`, `venue_selected`, `share
 | API | Purpose | Auth |
 |-----|---------|------|
 | Google Maps JavaScript API | Autocomplete, Nearby Search, Directions, Place Details, Geocoding | API Key |
-| Google Generative Language (Gemini) | AI venue ranking (primary) | API Key |
-| OpenAI Chat Completions | AI venue ranking (fallback 1) | Bearer token |
-| Anthropic Messages | AI venue ranking (fallback 2) | API key header |
+| Google Generative Language (Gemini) | AI keyword extraction + review filtering (primary) | API Key |
+| OpenAI Chat Completions | AI keyword extraction + review filtering (fallback 1) | Bearer token |
+| Anthropic Messages | AI keyword extraction + review filtering (fallback 2) | API key header |
 | Open-Meteo | Weather at midpoint | None (free) |
 | OSM Nominatim | Fallback reverse geocoding | None (free) |
 | Supabase | Auth + Database + Realtime Presence | Anon key |
@@ -269,8 +288,9 @@ Examples: `mode_toggle`, `vibe_select`, `venues_shown`, `venue_selected`, `share
 - Input validation on all API endpoints (prompt length, URL format)
 - SSRF protection on link resolver (only Google Maps domains allowed)
 - **AI proxy authentication** — Client sends Supabase access token; server verifies via Supabase `/auth/v1/user` endpoint
-- **Server-side rate limiting** — Sliding window on `/api/ai-rank`: 5 req/min anonymous, 20 req/min authenticated (per IP)
+- **Server-side rate limiting** — Sliding window on `/api/ai-rank` and `/api/ai-keywords`: 5 req/min anonymous, 20 req/min authenticated (per IP)
 - **Client-side Google Maps rate limiting** — Per-service sliding window caps: geocode 30/min, nearby search 10/min, directions 30/min, place details 10/min; exceeded calls gracefully fallback (haversine, fallback venues, toasts)
+- **Monthly Google Maps quota guard** — Client-side monthly usage tracker (localStorage) prevents exceeding the free-tier $200 credit; when limits are reached, a popup informs the user and API calls are declined until the quota resets next month; limits are configurable via `CONFIG.MAPS_MONTHLY_LIMITS`
 
 ### 7.4 Privacy
 - Geolocation is opt-in (user must click button)
