@@ -115,8 +115,10 @@ a {
 }
 
 .logo-icon {
-  font-size: 1.4rem;
-  line-height: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
   flex-shrink: 0;
 }
 
