@@ -42,6 +42,23 @@ function routeCacheKey(origin, dest) {
   return origin.lat.toFixed(6) + ',' + origin.lng.toFixed(6) + '->' + dest.lat.toFixed(6) + ',' + dest.lng.toFixed(6);
 }
 
+// ---------- Client-side Google Maps Rate Limiter ----------
+const _gmapsRateLimit = {
+  // Per-service limits (requests per minute)
+  limits: { geocode: 30, nearby_search: 10, directions: 30, place_details: 10 },
+  buckets: {},  // service -> [timestamps]
+  check(service) {
+    const max = this.limits[service] || 20;
+    const now = Date.now();
+    const windowStart = now - 60000;
+    const bucket = (this.buckets[service] || []).filter(t => t > windowStart);
+    if (bucket.length >= max) return false;
+    bucket.push(now);
+    this.buckets[service] = bucket;
+    return true;
+  },
+};
+
 const AVATAR_COLORS = [
   '#FF6B6B', '#48DBFB', '#FECA57', '#FF9FF3', '#54A0FF',
   '#5F27CD', '#01A3A4', '#F368E0', '#EE5A24', '#6AB04C',
@@ -60,13 +77,15 @@ const VIBE_MAP = {
   '🎉 Party':          { type: 'night_club',  keyword: 'party lounge club', category: 'food' },
   // Play
   '⚽ Sports':         { type: 'stadium',     keyword: 'sports arena stadium', category: 'play' },
+  '� Court sports':   { type: 'gym',         keyword: 'badminton pickleball tennis squash court', category: 'play' },
+  '🎳 Bowling':        { type: 'bowling_alley', keyword: 'bowling alley lanes', category: 'play' },
   '🌳 Parks':          { type: 'park',        keyword: 'park garden', category: 'play' },
-  '🎯 Activities':     { type: 'amusement_park', keyword: 'escape room bowling arcade', category: 'play' },
+  '🎯 Activities':     { type: 'amusement_park', keyword: 'escape room arcade', category: 'play' },
   '🎱 Gaming':         { type: 'bowling_alley', keyword: 'pool billiards gaming arcade', category: 'play' },
   '🧗 Adventure':      { type: 'gym',         keyword: 'rock climbing trampoline adventure', category: 'play' },
   '♨️ Chill':          { type: 'spa',         keyword: 'spa wellness massage', category: 'play' },
   // Gigs
-  '🎬 Cinema':         { type: 'movie_theater', keyword: 'cinema movies theater', category: 'gigs' },
+  '🎬 Cinema':         { type: 'movie_theater', keyword: 'cinema movie movies theater', category: 'gigs' },
   '😂 Comedy':         { type: 'establishment', keyword: 'comedy show standup', category: 'gigs' },
   '🎵 Live music':     { type: 'night_club',  keyword: 'live music concert bar', category: 'gigs' },
   '🎭 Theatre':        { type: 'establishment', keyword: 'theatre drama performing arts', category: 'gigs' },
@@ -350,6 +369,14 @@ function handleMapLinkPaste(e, id) {
 
 function reverseGeocodeAndSet(input, id, coords) {
   if (state.googleReady && google.maps.Geocoder) {
+    if (!_gmapsRateLimit.check('geocode')) {
+      input.disabled = false;
+      var fallback = coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5);
+      input.value = fallback;
+      setLocationForId(id, fallback, coords.lat, coords.lng);
+      showToast('Too many requests — please wait a moment');
+      return;
+    }
     var geocoder = new google.maps.Geocoder();
     var _gcStart = Date.now();
     geocoder.geocode({ location: { lat: coords.lat, lng: coords.lng } }, function(results, status) {
@@ -374,6 +401,12 @@ function reverseGeocodeAndSet(input, id, coords) {
 }
 
 function geocodeByName(input, id, name) {
+  if (!_gmapsRateLimit.check('geocode')) {
+    input.disabled = false;
+    input.value = '';
+    showToast('Too many requests — please wait a moment');
+    return;
+  }
   var geocoder = new google.maps.Geocoder();
   var _gcStart = Date.now();
   geocoder.geocode({ address: name }, function(results, status) {
@@ -461,6 +494,12 @@ function reverseGeocode(id, lat, lng) {
   const input = document.querySelector(`input[data-id="${id}"]`);
 
   if (state.googleReady) {
+    if (!_gmapsRateLimit.check('geocode')) {
+      input.value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      setLocationForId(id, input.value, lat, lng);
+      showToast('Too many requests — please wait a moment');
+      return;
+    }
     const geocoder = new google.maps.Geocoder();
     var _gcStart = Date.now();
     geocoder.geocode({ location: { lat, lng } }, (results, status) => {
@@ -687,8 +726,51 @@ function runVibeCheck() {
   if (val) {
     state.vibe = val;
     document.querySelectorAll('.vibe-tag').forEach(t => t.classList.remove('active'));
+
+    // Auto-detect category from the AI prompt
+    const detectedCat = detectCategoryFromPrompt(val);
+    if (detectedCat && detectedCat !== state.category) {
+      state.category = detectedCat;
+      document.querySelectorAll('.category-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.cat === detectedCat);
+      });
+      renderVibeTags();
+    }
+
     trackEvent('ai_prompt_input', { prompt: val, category: state.category });
   }
+}
+
+function detectCategoryFromPrompt(prompt) {
+  const p = prompt.toLowerCase();
+
+  const playKeywords = [
+    'sport', 'badminton', 'tennis', 'cricket', 'football', 'soccer', 'basketball',
+    'swim', 'pool', 'gym', 'workout', 'fitness', 'yoga', 'hike', 'hiking', 'trek',
+    'climb', 'bowling', 'arcade', 'gaming', 'game', 'trampoline', 'skate', 'skating',
+    'cycling', 'bike', 'park', 'garden', 'adventure', 'paintball', 'laser tag',
+    'go kart', 'karting', 'spa', 'massage', 'wellness', 'escape room', 'billiard',
+    'snooker', 'golf', 'mini golf', 'ping pong', 'table tennis', 'volleyball',
+    'running', 'jogging', 'boxing', 'martial art', 'karate', 'judo', 'gym',
+    'playground', 'outdoor', 'picnic', 'kayak', 'surf', 'pickleball', 'squash',
+    'court', 'racket', 'racquet', 'turf', 'futsal', 'cricket net',
+  ];
+
+  const gigsKeywords = [
+    'movie', 'cinema', 'film', 'theater', 'theatre', 'comedy', 'standup', 'stand-up',
+    'concert', 'live music', 'gig', 'show', 'performance', 'drama', 'musical',
+    'art', 'gallery', 'museum', 'exhibition', 'exhibit', 'festival', 'event',
+    'opera', 'ballet', 'dance show', 'magic show', 'karaoke', 'open mic',
+    'poetry', 'spoken word', 'jazz', 'orchestra', 'symphony',
+  ];
+
+  for (const kw of playKeywords) {
+    if (p.includes(kw)) return 'play';
+  }
+  for (const kw of gigsKeywords) {
+    if (p.includes(kw)) return 'gigs';
+  }
+  return null; // no match — keep current category
 }
 
 // ---------- Find Sweet Spot ----------
@@ -869,8 +951,8 @@ function findSweetSpot() {
     btn.disabled = false;
     btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Find the Midway';
 
-    // Fetch AI overlap notes (only if signed in)
-    if (window._isSignedIn && state.results.length > 0) {
+    // Fetch AI overlap notes
+    if (state.results.length > 0) {
       fetchOverlapNotes(state.results);
     }
   });
@@ -892,7 +974,10 @@ function searchNearbyPlaces(center) {
       gigs: { type: 'movie_theater', keyword: 'cinema entertainment' },
     };
     const catDefault = categoryDefaults[state.category] || categoryDefaults.food;
-    const placeType = vibeEntry ? vibeEntry.type : catDefault.type;
+    // If user typed free-form text (no VIBE_MAP match), use keyword-only search
+    // so the type restriction doesn't filter out relevant results
+    const isFreeText = state.vibe && !vibeEntry;
+    const placeType = vibeEntry ? vibeEntry.type : (isFreeText ? null : catDefault.type);
     const keyword = vibeEntry ? vibeEntry.keyword : (state.vibe || catDefault.keyword);
 
     function parseResults(results) {
@@ -926,9 +1011,14 @@ function searchNearbyPlaces(center) {
       location: new google.maps.LatLng(center.lat, center.lng),
       radius: 3000,
       keyword: keyword,
-      type: placeType,
     };
+    if (placeType) request.type = placeType;
 
+    if (!_gmapsRateLimit.check('nearby_search')) {
+      showToast('Too many searches — please wait a moment');
+      resolve(generateFallbackVenues(center));
+      return;
+    }
     var _nsStart = Date.now();
     state.placesService.nearbySearch(request, (results, status) => {
       logApiCall('google_maps', 'nearby_search', status === google.maps.places.PlacesServiceStatus.OK, status !== google.maps.places.PlacesServiceStatus.OK ? status : null, Date.now() - _nsStart);
@@ -941,6 +1031,10 @@ function searchNearbyPlaces(center) {
 
         if (venues.length < 5) {
           const widerRequest = { ...request, radius: 5000 };
+          if (!_gmapsRateLimit.check('nearby_search')) {
+            resolve(venues.slice(0, limit));
+            return;
+          }
           var _ns2Start = Date.now();
           state.placesService.nearbySearch(widerRequest, (results2, status2) => {
             logApiCall('google_maps', 'nearby_search', status2 === google.maps.places.PlacesServiceStatus.OK, status2 !== google.maps.places.PlacesServiceStatus.OK ? status2 : null, Date.now() - _ns2Start);
@@ -1034,15 +1128,26 @@ function buildOverlapPrompt(venues, category) {
   return 'The user searched for ' + catLabel + ' venues. For each venue below, if it offers something notable BEYOND its primary category (e.g. a restaurant that also has live music, or a bowling alley with a great bar), write a brief 6-10 word note. If there is no notable overlap, write "none".\n\n' + venueList + '\n\nReturn ONLY a JSON array of strings, one per venue in order. Example: ["Live DJ nights on weekends", "none", "Also has mini-golf course"]. No explanation, just the JSON array.';
 }
 
+async function _getAccessToken() {
+  if (!_supabaseClient) return null;
+  try {
+    const { data: { session } } = await _supabaseClient.auth.getSession();
+    return session?.access_token || null;
+  } catch { return null; }
+}
+
 async function aiVibeRank(userVibe, venues) {
   if (!userVibe || venues.length === 0) return venues;
 
   const prompt = buildAIPrompt(userVibe, venues);
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = await _getAccessToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
     const res = await fetch('/api/ai-rank', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ prompt }),
     });
     if (!res.ok) throw new Error('Proxy HTTP ' + res.status);
@@ -1084,10 +1189,14 @@ function applyAIRanking(venues, ranking) {
 
 function fetchOverlapNotes(venues) {
   var prompt = buildOverlapPrompt(venues, state.category);
-  fetch('/api/ai-rank', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: prompt }),
+  var headers = { 'Content-Type': 'application/json' };
+  _getAccessToken().then(function(token) {
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    return fetch('/api/ai-rank', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({ prompt: prompt }),
+    });
   })
   .then(function(r) { return r.json(); })
   .then(function(data) {
@@ -1143,6 +1252,16 @@ function fetchOneRoute(origin, dest, retries) {
       return;
     }
     var _dirStart = Date.now();
+    if (!_gmapsRateLimit.check('directions')) {
+      const fallback = {
+        distKm: haversine(dest.lat, dest.lng, origin.lat, origin.lng),
+        durationMin: null,
+        routePoints: [[origin.lat, origin.lng], [dest.lat, dest.lng]],
+      };
+      _routeCache[cKey] = fallback;
+      res(fallback);
+      return;
+    }
     state.directionsService.route({
       origin: new google.maps.LatLng(origin.lat, origin.lng),
       destination: new google.maps.LatLng(dest.lat, dest.lng),
@@ -1379,10 +1498,9 @@ function renderVenueList() {
   const canLoadMore = state._allVenues.length > state.results.length;
   const moreBtn = canLoadMore ? `
     <div class="find-more-wrap">
-      <button class="btn-find-more${window._isSignedIn ? '' : ' locked'}" id="findMoreBtn" onclick="loadMoreOptions()"${window._isSignedIn ? '' : ' disabled'}>
+      <button class="btn-find-more" id="findMoreBtn" onclick="loadMoreOptions()">
         <i class="fa-solid fa-plus"></i> Find more options
       </button>
-      ${window._isSignedIn ? '' : '<div class="find-more-locked-overlay"></div>'}
     </div>
   ` : '';
 
@@ -1496,7 +1614,6 @@ function sortVenues(mode) {
 }
 
 async function loadMoreOptions() {
-  if (!window._isSignedIn) return;
   trackEvent('find_more_click', { currentCount: state.results.length });
   const more = state._allVenues.slice(0, 10);
   if (more.length <= state.results.length) return;
@@ -1804,7 +1921,7 @@ function showShareModal() {
   _populateShareCard(v, null);
 
   // Fetch Place Details for opening hours
-  if (v && v.placeId && state.placesService) {
+  if (v && v.placeId && state.placesService && _gmapsRateLimit.check('place_details')) {
     var _pdStart = Date.now();
     state.placesService.getDetails(
       { placeId: v.placeId, fields: ['opening_hours', 'business_status', 'utc_offset_minutes'] },

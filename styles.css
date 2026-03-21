@@ -684,7 +684,7 @@ a {
 
 .category-btn {
   flex: 1;
-  padding: 7px 12px;
+  padding: 6px 12px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -747,8 +747,7 @@ a {
 }
 
 .ai-prompt-section {
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-md);
+  padding-top: var(--space-sm);
 }
 
 .ai-prompt-label {
@@ -759,6 +758,46 @@ a {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.vibe-more-options {
+  margin-top: var(--space-md);
+}
+
+.vibe-preset-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: var(--space-xs);
+}
+
+.vibe-more-toggle {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  user-select: none;
+}
+
+.vibe-more-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.vibe-more-toggle .vibe-more-arrow {
+  font-size: 0.6rem;
+  transition: transform 0.2s;
+}
+
+.vibe-more-options[open] .vibe-more-arrow {
+  transform: rotate(180deg);
+}
+
+.vibe-more-body {
+  padding-top: var(--space-sm);
 }
 
 .ai-prompt-input {
@@ -2099,9 +2138,9 @@ a {
   }
 
   .category-btn {
-    padding: 10px 8px;
+    padding: 4px 8px;
     font-size: 0.78rem;
-    min-height: 44px;
+    min-height: 32px;
   }
 
   /* Bigger vibe tags for touch */
@@ -2924,29 +2963,14 @@ a {
 /* ========================================
    AI PROMPT LOCK (sign-up gated)
    ======================================== */
-.ai-lock {
-  margin-left: 6px;
-  color: #111827;
-  font-size: 0.72rem;
-  cursor: default;
-}
+
 
 .ai-prompt-wrap {
   position: relative;
   border-radius: var(--radius-md);
 }
 
-.ai-prompt-section.unlocked .ai-prompt-wrap {
-  padding: 1px;
-  background: conic-gradient(from var(--border-angle, 0deg), #6366F1, #8B5CF6, #EC4899, #F59E0B, #6366F1);
-  border-radius: var(--radius-md);
-  animation: rotateBorder 2.5s linear infinite;
-}
 
-.ai-prompt-section.unlocked .ai-prompt-wrap .ai-prompt-input {
-  border: none;
-  border-radius: calc(var(--radius-md) - 1px);
-}
 
 @property --border-angle {
   syntax: '<angle>';
@@ -2956,48 +2980,6 @@ a {
 
 @keyframes rotateBorder {
   to { --border-angle: 360deg; }
-}
-
-.ai-prompt-section.unlocked .ai-lock {
-  display: none;
-}
-
-.ai-prompt-section.unlocked .ai-locked-overlay {
-  display: none;
-}
-
-.ai-prompt-section.unlocked .ai-prompt-input {
-  opacity: 1;
-}
-
-.ai-prompt-section:not(.unlocked) .ai-prompt-input {
-  opacity: 1;
-  pointer-events: none;
-  background: #E5E7EB;
-  color: #9CA3AF;
-}
-
-.ai-locked-overlay {
-  position: absolute;
-  inset: 0;
-  cursor: pointer;
-  z-index: 2;
-}
-
-.ai-locked-overlay:hover::after {
-  content: 'Sign in for this feature';
-  position: absolute;
-  bottom: -32px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #111827;
-  color: white;
-  font-size: 0.72rem;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  pointer-events: none;
 }
 
 /* Footer */

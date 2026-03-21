@@ -29,7 +29,7 @@ Midway helps groups of friends find the best place to meet. Enter everyone's sta
 ### Vibe Check
 - **Category Tabs** — Food, Play, Gigs — each with curated vibe tags (e.g. "Rooftop Bar", "Board Games Café")
 - **AI Vibe Ranking** — Describe what you want in plain English and an AI agent re-ranks venues to match (Gemini → OpenAI → Claude fallback chain)
-- **Sign-in required** for AI features (free with Google account)
+- **No sign-in required** — AI features and all venue options are available to everyone
 
 ### Sharing
 - **Share Card** — Venue photo, stars, price, open/closed status, group stats
@@ -50,7 +50,7 @@ Midway helps groups of friends find the best place to meet. Enter everyone's sta
 ### Extras
 - **Weather Widget** — Live weather at the midpoint via Open-Meteo
 - **Geolocation** — "Use my location" button (opt-in, not on page load)
-- **Google Sign-In** — Save locations, unlock AI features, profile photo avatar (signed-in users' names are locked and shown on hover)
+- **Google Sign-In** — Save locations, profile photo avatar (signed-in users' names are locked and shown on hover)
 - **Pareto Dominance Ranking** — Venues where everyone benefits equally rank higher
 - **Travel Hero Badge** — Shows who travels the farthest
 

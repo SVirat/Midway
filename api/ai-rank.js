@@ -1,9 +1,53 @@
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+
+// ---------- Rate Limiting (in-memory sliding window) ----------
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_ANON = 5;
+const RATE_LIMIT_AUTH = 20;
+const rateLimitMap = new Map();
+
+function checkRateLimit(key, maxRequests) {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (rateLimitMap.get(key) || []).filter(t => t > windowStart);
+  if (timestamps.length >= maxRequests) return false;
+  timestamps.push(now);
+  rateLimitMap.set(key, timestamps);
+  return true;
+}
+
+async function verifySupabaseToken(token) {
+  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // --- Auth & rate limiting ---
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const isAuthenticated = token ? await verifySupabaseToken(token) : false;
+  const limit = isAuthenticated ? RATE_LIMIT_AUTH : RATE_LIMIT_ANON;
+
+  if (!checkRateLimit(ip, limit)) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
 
   const { prompt } = req.body || {};
   if (!prompt || typeof prompt !== 'string' || prompt.length > 5000) {

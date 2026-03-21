@@ -81,20 +81,24 @@
 
         <!-- Vibe Check -->
         <div class="vibe-panel">
-          <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Vibe Check</h3>
-          <div class="category-toggle">
-            <button class="category-btn active" data-cat="food" onclick="setCategory('food', this)"><i class="fa-solid fa-utensils"></i> Food</button>
-            <button class="category-btn" data-cat="play" onclick="setCategory('play', this)"><i class="fa-solid fa-table-tennis-paddle-ball"></i> Play</button>
-            <button class="category-btn" data-cat="gigs" onclick="setCategory('gigs', this)"><i class="fa-solid fa-ticket"></i> Gigs</button>
-          </div>
-          <div class="vibe-tags" id="vibeTags"></div>
           <div class="ai-prompt-section" id="aiPromptSection">
-            <p class="ai-prompt-label"><i class="fa-solid fa-sparkles"></i><b>... or, let our AI Agent decide for you</b><i class="fa-solid fa-lock ai-lock" id="aiLock" title="Sign in for this feature"></i></p>
+            <p class="ai-prompt-label"><i class="fa-solid fa-sparkles"></i>Tell our <b>AI Agent</b> the vibe you want</p>
             <div class="ai-prompt-wrap" id="aiPromptWrap">
-              <input type="text" id="vibeInput" class="ai-prompt-input" placeholder='e.g. "great outdoor seating with tasty pastries"' onchange="runVibeCheck()" disabled />
-              <div class="ai-locked-overlay" id="aiLockedOverlay"></div>
+              <input type="text" id="vibeInput" class="ai-prompt-input" placeholder='e.g. "great outdoor seating with tasty fries"' onchange="runVibeCheck()" />
             </div>
           </div>
+          <details class="vibe-more-options">
+            <summary class="vibe-more-toggle">More options <i class="fa-solid fa-chevron-down vibe-more-arrow"></i></summary>
+            <div class="vibe-more-body">
+              <p class="vibe-preset-label">... or, select from some of these vibes</p>
+              <div class="category-toggle">
+                <button class="category-btn active" data-cat="food" onclick="setCategory('food', this)"><i class="fa-solid fa-utensils"></i> Food</button>
+                <button class="category-btn" data-cat="play" onclick="setCategory('play', this)"><i class="fa-solid fa-table-tennis-paddle-ball"></i> Play</button>
+                <button class="category-btn" data-cat="gigs" onclick="setCategory('gigs', this)"><i class="fa-solid fa-ticket"></i> Gigs</button>
+              </div>
+              <div class="vibe-tags" id="vibeTags"></div>
+            </div>
+          </details>
         </div>
       </div>
 

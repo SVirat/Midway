@@ -151,11 +151,7 @@ function onSignedIn(user) {
     broadcastMyPresence();
   }
 
-  // Unlock AI prompt
-  const aiSection = document.getElementById('aiPromptSection');
-  if (aiSection) aiSection.classList.add('unlocked');
-  const vibeInput = document.getElementById('vibeInput');
-  if (vibeInput) vibeInput.disabled = false;
+
 
   // Log sign-in event
   logActivity('sign_in', { provider: 'google' });
@@ -187,11 +183,7 @@ function onSignedOut() {
     }
   }
 
-  // Lock AI prompt
-  const aiSection = document.getElementById('aiPromptSection');
-  if (aiSection) aiSection.classList.remove('unlocked');
-  const vibeInput = document.getElementById('vibeInput');
-  if (vibeInput) { vibeInput.disabled = true; vibeInput.value = ''; }
+
 }
 
 function toggleUserDropdown() {

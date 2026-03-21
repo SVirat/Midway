@@ -18,14 +18,73 @@ if (fs.existsSync(envPath)) {
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || env.OPENAI_API_KEY || '';
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || env.CLAUDE_API_KEY || '';
+const SUPABASE_URL = process.env.SUPABASE_URL || env.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || '';
 const PORT = process.env.PORT || 3000;
 
 const app = express();
 app.use(express.json());
 app.use(express.static(__dirname));
 
+// ---------- Rate Limiting (in-memory sliding window) ----------
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_ANON = 5;              // anonymous: 5 req/min
+const RATE_LIMIT_AUTH = 20;             // authenticated: 20 req/min
+const rateLimitMap = new Map();
+
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - RATE_LIMIT_WINDOW_MS;
+  for (const [key, timestamps] of rateLimitMap) {
+    const filtered = timestamps.filter(t => t > cutoff);
+    if (filtered.length === 0) rateLimitMap.delete(key);
+    else rateLimitMap.set(key, filtered);
+  }
+}, 5 * 60 * 1000);
+
+function checkRateLimit(key, maxRequests) {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (rateLimitMap.get(key) || []).filter(t => t > windowStart);
+  if (timestamps.length >= maxRequests) return false;
+  timestamps.push(now);
+  rateLimitMap.set(key, timestamps);
+  return true;
+}
+
+// ---------- Supabase Token Verification ----------
+async function verifySupabaseToken(token) {
+  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
+}
+
 // ---------- AI Proxy Endpoint ----------
 app.post('/api/ai-rank', async (req, res) => {
+  // --- Auth & rate limiting ---
+  const ip = getClientIp(req);
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const isAuthenticated = token ? await verifySupabaseToken(token) : false;
+  const limit = isAuthenticated ? RATE_LIMIT_AUTH : RATE_LIMIT_ANON;
+
+  if (!checkRateLimit(ip, limit)) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string' || prompt.length > 5000) {
     return res.status(400).json({ error: 'Invalid prompt' });

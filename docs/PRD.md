@@ -52,12 +52,12 @@ Midway is a web app that calculates the optimal meeting spot for any group. User
 | Play | Bowling, Arcade, Board Games, Mini Golf, Escape Room, Paintball |
 | Gigs | Live Music, Comedy, Theatre, Open Mic, DJ Night, Karaoke |
 
-**AI Agent Mode (sign-in required):**
-- Free-text input: "great outdoor seating with tasty pastries"
+**AI Agent Mode:**
+- Free-text input: "great outdoor seating with tasty fries"
 - Sends prompt to serverless AI endpoint
 - AI re-ranks venue results based on the description
 - Provider cascade: Gemini 2.0 Flash → GPT-4o Mini → Claude Sonnet 4
-- Locked behind Google sign-in (feature gate)
+- Available to all users without sign-in
 
 ### 2.3 Mode Toggle
 **Two modes for center calculation:**
@@ -165,15 +165,16 @@ Each venue card provides:
 - OAuth 2.0 via Supabase Auth
 - Profile photo displayed as avatar in navbar
 - User menu dropdown (name, email, sign out)
-- Unlocks: AI vibe input, animated gradient border on AI field
+- Unlocks: saved locations, profile sync across sessions
 
 ### 3.2 Feature Gating
 | Feature | Signed Out | Signed In |
-|---------|-----------|-----------|
+|---------|-----------|----------|
 | Location input | ✅ | ✅ |
 | Category/vibe tags | ✅ | ✅ |
-| AI custom prompt | 🔒 Locked | ✅ |
+| AI custom prompt | ✅ | ✅ |
 | Search venues | ✅ | ✅ |
+| Load more options | ✅ | ✅ |
 | Share | ✅ | ✅ |
 | Saved locations | 🔒 | ✅ |
 
