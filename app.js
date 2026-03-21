@@ -46,9 +46,9 @@ const NAMES = ['You', 'Alex', 'Jordan', 'Sam', 'Riley', 'Morgan', 'Casey', 'Tayl
 const VIBE_MAP = {
   // Food
   '☕ Cozy café':      { type: 'cafe',       keyword: 'cozy cafe', category: 'food' },
-  '🍕 Casual eats':    { type: 'restaurant',  keyword: 'casual dining', category: 'food' },
+  '🍕 Fast food':      { type: 'restaurant',  keyword: 'casual dining', category: 'food' },
   '🍸 Rooftop bar':    { type: 'bar',         keyword: 'rooftop bar', category: 'food' },
-  '🥗 Healthy food':   { type: 'restaurant',  keyword: 'healthy salad bowl', category: 'food' },
+  '🥗 Healthy':        { type: 'restaurant',  keyword: 'healthy salad bowl', category: 'food' },
   '📚 Quiet spot':     { type: 'cafe',        keyword: 'quiet cafe bookstore', category: 'food' },
   '🎉 Party venue':    { type: 'night_club',  keyword: 'party lounge club', category: 'food' },
   // Play
