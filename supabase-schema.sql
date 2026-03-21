@@ -264,6 +264,27 @@ do $$ begin
   end if;
 end $$;
 
+-- 11. Shared sessions (share links with auto-expiry after 12 hours)
+create table if not exists public.shared_sessions (
+  code text primary key,
+  snapshot jsonb not null,
+  created_at timestamptz default now()
+);
+
+alter table public.shared_sessions enable row level security;
+
+do $$ begin
+  if not exists (select 1 from pg_policies where policyname = 'Anyone can insert shared sessions' and tablename = 'shared_sessions') then
+    create policy "Anyone can insert shared sessions" on public.shared_sessions for insert with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Anyone can select shared sessions' and tablename = 'shared_sessions') then
+    create policy "Anyone can select shared sessions" on public.shared_sessions for select using (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Anyone can delete expired shared sessions' and tablename = 'shared_sessions') then
+    create policy "Anyone can delete expired shared sessions" on public.shared_sessions for delete using (created_at < now() - interval '12 hours');
+  end if;
+end $$;
+
 -- ============================================
 -- Indexes (IF NOT EXISTS — all safe)
 -- ============================================
@@ -288,5 +309,6 @@ create index if not exists idx_client_logs_anon on public.client_logs(anon_id, c
 
 create index if not exists idx_session_metrics_session on public.session_metrics(session_id);
 create index if not exists idx_groups_created_at on public.groups(created_at);
+create index if not exists idx_shared_sessions_created_at on public.shared_sessions(created_at);
 create index if not exists idx_session_metrics_anon on public.session_metrics(anon_id);
 create index if not exists idx_session_metrics_user on public.session_metrics(user_id);

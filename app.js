@@ -55,7 +55,7 @@ const VIBE_MAP = {
   '☕ Cozy café':      { type: 'cafe',       keyword: 'cozy cafe', category: 'food' },
   '🥗 Healthy':        { type: 'restaurant',  keyword: 'healthy salad bowl', category: 'food' },
   '🍸 Rooftop bar':    { type: 'bar',         keyword: 'rooftop bar', category: 'food' },
-  '📚 Quiet':          { type: 'cafe',        keyword: 'quiet cafe bookstore', category: 'food' },
+  '📚 Quiet spot':     { type: 'cafe',        keyword: 'quiet cafe bookstore', category: 'food' },
   '🍕 Fast food':      { type: 'restaurant',  keyword: 'casual dining', category: 'food' },
   '🎉 Party':          { type: 'night_club',  keyword: 'party lounge club', category: 'food' },
   // Play
@@ -749,6 +749,8 @@ function findSweetSpot() {
   if (state.locations.length < 2) return;
 
   state._sortMode = 'closest';
+  _currentShareCode = null;
+  _currentShareResultsKey = null;
 
   const btn = document.getElementById('findBtn');
   btn.disabled = true;
@@ -1369,7 +1371,7 @@ function renderVenueList() {
           ? '<button class="btn-tiny book" onclick="event.stopPropagation(); openGoogleMapsPlace(\'' + v.placeId + '\')">View</button>'
           : '<button class="btn-tiny book" onclick="event.stopPropagation(); bookVenue(\'' + encodeURIComponent(v.name) + '\')">Search</button>'
         }
-        <button class="btn-tiny" onclick="event.stopPropagation(); showShareModal()"><i class="fa-solid fa-share-nodes"></i> Share</button>
+        <button class="btn-tiny" onclick="event.stopPropagation(); selectVenue(${v.id}); showShareModal()"><i class="fa-solid fa-share-nodes"></i> Share</button>
       </div>
     </div>
   `).join('');
@@ -1395,14 +1397,14 @@ function renderVenueList() {
 
   // Load photos via DOM
   getSortedVenues().forEach(v => {
-    if (!v._photosObj) return;
+    var photoUrl = null;
+    if (v._photosObj) {
+      try { photoUrl = v._photosObj.getUrl({ maxWidth: 200 }); } catch(e) {}
+    }
+    if (!photoUrl && v.photo) photoUrl = v.photo;
+    if (!photoUrl) return;
     const placeholder = document.querySelector('[data-photo-vid="' + v.id + '"]');
     if (!placeholder) return;
-    var url;
-    try {
-      url = v._photosObj.getUrl({ maxWidth: 200 });
-    } catch(e) { return; }
-    if (!url) return;
     const img = document.createElement('img');
     img.className = 'venue-photo';
     img.alt = v.name;
@@ -1424,7 +1426,7 @@ function renderVenueList() {
         el.innerHTML = '<i class="fa-solid ' + v.icon + '"></i>';
       }
     };
-    img.src = url;
+    img.src = photoUrl;
   });
 }
 
@@ -1444,6 +1446,8 @@ function escapeHtml(str) {
 
 function selectVenue(vid) {
   state.chosenVenue = state.results.find(v => v.id === vid);
+  _currentShareCode = null;
+  _currentShareResultsKey = null;
   document.querySelectorAll('.venue-card').forEach(c => c.classList.remove('active'));
   const card = document.querySelector('.venue-card[data-vid="' + vid + '"]');
   if (card) card.classList.add('active');
@@ -1879,29 +1883,106 @@ function hideShareModal(e) {
   document.getElementById('shareModal').classList.remove('visible');
 }
 
-function getShareMessage() {
+// ---------- Share Snapshot ----------
+function generateShareCode() {
+  // 5-char lowercase alphanumeric, distinct from 6-char uppercase group codes
+  var chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  var code = '';
+  for (var i = 0; i < 5; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+  return code;
+}
+
+function buildShareSnapshot() {
+  var v = state.chosenVenue || (state.results[0] || null);
+  return {
+    locations: state.locations.map(function(l) {
+      return { name: l.name, address: l.address, lat: l.lat, lng: l.lng };
+    }),
+    mode: state.mode,
+    category: state.category,
+    vibe: state.vibe,
+    results: state.results.map(function(rv) {
+      return {
+        name: rv.name, type: rv.type, rating: rv.rating,
+        userRatingsTotal: rv.userRatingsTotal, price: rv.price,
+        icon: rv.icon, lat: rv.lat, lng: rv.lng, address: rv.address,
+        placeId: rv.placeId, photo: rv.photo, isOpen: rv.isOpen,
+        businessStatus: rv.businessStatus, distance: rv.distance,
+        _overlapNote: rv._overlapNote || null,
+        _realDists: rv._realDists || null,
+        _realTimes: rv._realTimes || null,
+      };
+    }),
+    chosenVenueIndex: v ? state.results.findIndex(function(r) { return r === v; }) : 0,
+    distanceData: (state._distanceData || []).map(function(d) {
+      return { locName: d.loc.name, distKm: d.distKm, durationMin: d.durationMin, routePoints: d.routePoints || [] };
+    }),
+    sortMode: state._sortMode,
+  };
+}
+
+async function saveShareSnapshot() {
+  if (!_supabaseClient) return null;
+  var code = generateShareCode();
+  var snapshot = buildShareSnapshot();
+  var { error } = await _supabaseClient.from('shared_sessions').insert({
+    code: code,
+    snapshot: snapshot,
+  });
+  if (error) {
+    console.warn('Failed to save share snapshot:', error.message);
+    return null;
+  }
+  return code;
+}
+
+// Cached share code for the current results so we don't create duplicates
+var _currentShareCode = null;
+var _currentShareResultsKey = null;
+
+async function getOrCreateShareCode() {
+  // Cache key: hash of chosen venue + locations
+  var v = state.chosenVenue || (state.results[0] || null);
+  var key = (v ? v.placeId || v.name : '') + '|' + state.locations.map(function(l) { return l.lat + ',' + l.lng; }).join(';');
+  if (_currentShareCode && _currentShareResultsKey === key) return _currentShareCode;
+  var code = await saveShareSnapshot();
+  if (code) {
+    _currentShareCode = code;
+    _currentShareResultsKey = key;
+  }
+  return code;
+}
+
+function getShareLink(shareCode) {
+  var origin = window.location.origin || 'https://mway.vercel.app';
+  return origin + window.location.pathname + '?s=' + shareCode;
+}
+
+function getShareMessage(shareLink) {
   const v = state.chosenVenue || (state.results[0] || null);
-  const dd = state._distanceData || [];
-  const totalDist = dd.reduce((s, d) => s + d.distKm, 0);
   let msg = 'Hey! How does this look?\n' + (v ? v.name : '');
   if (v && v.placeId) msg += ' (https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(v.name) + '&query_place_id=' + encodeURIComponent(v.placeId) + ')';
   if (v && v.address) msg += '\n📍 ' + v.address;
   if (v && v.rating) msg += '\n⭐ ' + v.rating + (v.userRatingsTotal ? ' (' + v.userRatingsTotal + ' reviews)' : '');
-  msg += '\n\nFound with Midway: https://mway.vercel.app';
+  msg += '\n\nFind more options: ' + shareLink;
   return msg;
 }
 
-function shareToWhatsApp() {
-  const text = encodeURIComponent(getShareMessage());
+async function shareToWhatsApp() {
+  var code = await getOrCreateShareCode();
+  var link = code ? getShareLink(code) : (window.location.origin || 'https://mway.vercel.app');
+  const text = encodeURIComponent(getShareMessage(link));
   window.open('https://wa.me/?text=' + text, '_blank', 'noopener,noreferrer');
-  trackEvent('share_whatsapp', { venueName: state.chosenVenue ? state.chosenVenue.name : null });
+  trackEvent('share_whatsapp', { venueName: state.chosenVenue ? state.chosenVenue.name : null, shareCode: code });
 }
 
-function copyShareMessage() {
-  const msg = getShareMessage();
+async function copyShareMessage() {
+  var code = await getOrCreateShareCode();
+  var link = code ? getShareLink(code) : (window.location.origin || 'https://mway.vercel.app');
+  const msg = getShareMessage(link);
   navigator.clipboard.writeText(msg).then(function() {
     showToast('Message copied!');
-    trackEvent('share_copy', { venueName: state.chosenVenue ? state.chosenVenue.name : null });
+    trackEvent('share_copy', { venueName: state.chosenVenue ? state.chosenVenue.name : null, shareCode: code });
     const preview = document.getElementById('sharePreview');
     var textEl = document.getElementById('sharePreviewText');
     textEl.textContent = msg;
@@ -1928,6 +2009,144 @@ function copyInviteLink() {
   navigator.clipboard.writeText(link).then(function() {
     showToast('Invite link copied! Share it with your friends.');
   });
+}
+
+// ---------- Load Shared Session ----------
+async function loadSharedSession() {
+  var params = new URLSearchParams(window.location.search);
+  var code = params.get('s');
+  if (!code || !/^[a-z0-9]{5}$/.test(code)) return;
+
+  if (!_supabaseClient) return;
+
+  var { data, error } = await _supabaseClient
+    .from('shared_sessions')
+    .select('snapshot, created_at')
+    .eq('code', code)
+    .maybeSingle();
+
+  if (error || !data) {
+    showToast('This share link is invalid or has expired.');
+    var url = new URL(window.location.href);
+    url.searchParams.delete('s');
+    window.history.replaceState({}, '', url);
+    return;
+  }
+
+  // Check 12-hour expiry
+  var created = new Date(data.created_at).getTime();
+  if (Date.now() - created > 12 * 60 * 60 * 1000) {
+    showToast('This share link has expired.');
+    var url = new URL(window.location.href);
+    url.searchParams.delete('s');
+    window.history.replaceState({}, '', url);
+    _supabaseClient.from('shared_sessions').delete().eq('code', code).then(function() {});
+    return;
+  }
+
+  var snap = data.snapshot;
+  if (!snap || !snap.results || snap.results.length === 0) return;
+
+  // Restore state from snapshot
+  state.mode = snap.mode || 'fairness';
+  state.category = snap.category || 'food';
+  state.vibe = snap.vibe || '';
+  state._sortMode = snap.sortMode || 'closest';
+
+  // Set mode toggle
+  var modeToggle = document.getElementById('modeToggle');
+  if (modeToggle) modeToggle.checked = state.mode === 'eco';
+  var desc = document.getElementById('modeDescription');
+  if (desc) {
+    desc.innerHTML = state.mode === 'eco'
+      ? '<strong>Eco:</strong> Minimize total distance overall'
+      : '<strong>Fair:</strong> No one has to travel too far';
+  }
+
+  // Rebuild locations list: show shared locations (without "You") + add blank "You" at top
+  state.locations = [];
+  document.getElementById('locationsList').innerHTML = '';
+  locationCounter = 0;
+
+  // Add a blank "You" field with geolocate button
+  addLocationInput('You', true);
+  state.myLocationId = locationCounter;
+
+  // Add the shared people's locations (pre-filled, not named "You")
+  (snap.locations || []).forEach(function(loc) {
+    var displayName = loc.name === 'You' ? 'Friend' : loc.name;
+    addLocationInput(displayName);
+    var id = locationCounter;
+    var row = document.querySelector('.location-row[data-id="' + id + '"]');
+    if (row) {
+      var input = row.querySelector('input[data-id]');
+      if (input) input.value = loc.address || '';
+      var nameInput = row.querySelector('.name-input');
+      if (nameInput) nameInput.value = displayName;
+    }
+    state.locations.push({ id: id, name: displayName, address: loc.address, lat: loc.lat, lng: loc.lng });
+  });
+
+  // Rebuild results
+  state.results = snap.results.map(function(rv, i) {
+    rv.id = i + 1;
+    return rv;
+  });
+  state._allVenues = state.results.slice();
+  state.chosenVenue = state.results[snap.chosenVenueIndex || 0] || state.results[0];
+
+  // Rebuild distance data (using snapshot distances, keyed to shared locations)
+  var venueLat = state.chosenVenue.lat;
+  var venueLng = state.chosenVenue.lng;
+  var sharedLocs = snap.locations || [];
+  state._distanceData = (snap.distanceData || []).map(function(d, i) {
+    var srcLoc = sharedLocs[i] || {};
+    var srcLat = srcLoc.lat || 0;
+    var srcLng = srcLoc.lng || 0;
+    return {
+      loc: { name: d.locName, address: srcLoc.address || '', lat: srcLat, lng: srcLng },
+      distKm: d.distKm,
+      durationMin: d.durationMin,
+      routePoints: (d.routePoints && d.routePoints.length > 0) ? d.routePoints : [[srcLat, srcLng], [venueLat, venueLng]],
+    };
+  });
+
+  // Show results section
+  var section = document.getElementById('resultsSection');
+  section.style.display = 'block';
+  document.getElementById('shareBtn').style.display = '';
+
+  var badge = document.getElementById('resultModeBadge');
+  if (state.mode === 'eco') {
+    badge.innerHTML = '<i class="fa-solid fa-leaf"></i> Eco';
+    badge.className = 'results-mode-badge eco';
+  } else {
+    badge.innerHTML = '\uD83D\uDE0A Fair';
+    badge.className = 'results-mode-badge';
+  }
+
+  // Render from snapshot data
+  renderSummaryFromRoutes(
+    { lat: state.chosenVenue.lat, lng: state.chosenVenue.lng },
+    state._distanceData
+  );
+  renderVenueList();
+  renderMap(
+    { lat: state.chosenVenue.lat, lng: state.chosenVenue.lng },
+    state._distanceData
+  );
+
+  // Auto-scroll to results
+  setTimeout(function() {
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 300);
+
+  // Clean share param from URL
+  var cleanUrl = new URL(window.location.href);
+  cleanUrl.searchParams.delete('s');
+  window.history.replaceState({}, '', cleanUrl);
+
+  trackEvent('shared_session_loaded', { shareCode: code });
 }
 
 // ---------- Group / Invite (Real-time) ----------
@@ -2257,6 +2476,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadGoogleMaps();
   initSupabase();
   initGroup();
+  loadSharedSession();
 
   // Feature flag: More Options section
   if (FEATURE_MORE_OPTIONS) {
