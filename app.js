@@ -55,9 +55,9 @@ const VIBE_MAP = {
   '☕ Cozy café':      { type: 'cafe',       keyword: 'cozy cafe', category: 'food' },
   '🥗 Healthy':        { type: 'restaurant',  keyword: 'healthy salad bowl', category: 'food' },
   '🍸 Rooftop bar':    { type: 'bar',         keyword: 'rooftop bar', category: 'food' },
+  '📚 Quiet':          { type: 'cafe',        keyword: 'quiet cafe bookstore', category: 'food' },
   '🍕 Fast food':      { type: 'restaurant',  keyword: 'casual dining', category: 'food' },
-  '📚 Quiet spot':     { type: 'cafe',        keyword: 'quiet cafe bookstore', category: 'food' },
-  '🎉 Party':    { type: 'night_club',  keyword: 'party lounge club', category: 'food' },
+  '🎉 Party':          { type: 'night_club',  keyword: 'party lounge club', category: 'food' },
   // Play
   '⚽ Sports':         { type: 'stadium',     keyword: 'sports arena stadium', category: 'play' },
   '🌳 Parks':          { type: 'park',        keyword: 'park garden', category: 'play' },
