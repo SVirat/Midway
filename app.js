@@ -1461,7 +1461,14 @@ async function loadMoreOptions() {
 function openGoogleMapsPlace(placeId) {
   const venue = state.results.find(v => v.placeId === placeId);
   const query = venue ? encodeURIComponent(venue.name) : '';
-  window.open('https://www.google.com/maps/search/?api=1&query=' + query + '&query_place_id=' + encodeURIComponent(placeId), '_blank', 'noopener,noreferrer');
+  var a = document.createElement('a');
+  a.href = 'https://www.google.com/maps/search/?api=1&query=' + query + '&query_place_id=' + encodeURIComponent(placeId);
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
   if (venue) {
     logVenueInteraction(venue, 'view');
     trackEvent('venue_view', { venueName: venue.name, venuePlaceId: placeId });
