@@ -3,7 +3,7 @@
 **Version:** 1.0  
 **Last Updated:** March 21, 2026  
 **Author:** Virat Singh  
-**Status:** 🟢 Live
+**Status:** 🟢 Live<br>
 **Product Link:** https://mway.vercel.app
 
 ---
