@@ -2016,6 +2016,10 @@ a {
     margin-right: 10px;
   }
 
+  .pac-item-query {
+    font-size: inherit;
+  }
+
   /* --- Setup Container --- */
   .setup-container {
     padding: 0 var(--space-md);
@@ -2572,7 +2576,7 @@ a {
 }
 
 .pac-item-query {
-  font-size: 0.85rem;
+  font-size: inherit;
   font-weight: 500;
   color: var(--text);
 }
