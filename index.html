@@ -98,15 +98,14 @@
             </div>
           </details>
         </div>
-      </div>
 
-      <!-- More Options (controlled by FEATURE_MORE_OPTIONS flag in app.js) -->
-      <div class="more-options-section" id="moreOptionsSection" style="display:none">
-        <button class="more-options-toggle" onclick="toggleMoreOptions()">
-          <i class="fa-solid fa-gear"></i> More options
-          <i class="fa-solid fa-chevron-down more-options-arrow"></i>
-        </button>
-        <div class="more-options-body" id="moreOptionsBody" style="display:none">
+        <!-- More Options (controlled by FEATURE_MORE_OPTIONS flag in app.js) -->
+        <div class="more-options-section" id="moreOptionsSection" style="display:none">
+          <button class="more-options-toggle" onclick="toggleMoreOptions()">
+            <i class="fa-solid fa-gear"></i> More options
+            <i class="fa-solid fa-chevron-down more-options-arrow"></i>
+          </button>
+          <div class="more-options-body" id="moreOptionsBody" style="display:none">
           <!-- Time/calendar selector (commented out — kept for future use)
           <label class="meeting-time-label">
             <i class="fa-solid fa-clock"></i> When are you meeting?
@@ -145,32 +144,33 @@
             </div>
           </div>
           -->
-        </div>
-      </div>
-
-      <!-- Mode Toggle -->
-      <div class="mode-toggle-container">
-        <label class="mode-toggle">
-          <input type="checkbox" id="modeToggle" />
-          <div class="toggle-track">
-            <div class="toggle-option fairness-opt">
-              🙂 Fair
-            </div>
-            <div class="toggle-option eco-opt">
-              <i class="fa-solid fa-leaf"></i> Eco
-            </div>
-            <div class="toggle-thumb"></div>
           </div>
-        </label>
-        <span class="mode-description" id="modeDescription">
-          <strong>Fair:</strong> No one has to travel too far
-        </span>
-      </div>
+        </div>
 
-      <!-- Action -->
-      <button class="btn btn-primary btn-lg btn-find" id="findBtn" onclick="findSweetSpot()" disabled>
-        <i class="fa-solid fa-location-crosshairs"></i> Find the Midway
-      </button>
+        <!-- Mode Toggle -->
+        <div class="mode-toggle-container">
+          <label class="mode-toggle">
+            <input type="checkbox" id="modeToggle" />
+            <div class="toggle-track">
+              <div class="toggle-option fairness-opt">
+                🙂 Fair
+              </div>
+              <div class="toggle-option eco-opt">
+                <i class="fa-solid fa-leaf"></i> Eco
+              </div>
+              <div class="toggle-thumb"></div>
+            </div>
+          </label>
+          <span class="mode-description" id="modeDescription">
+            <strong>Fair:</strong> No one has to travel too far
+          </span>
+        </div>
+
+        <!-- Action -->
+        <button class="btn btn-primary btn-lg btn-find" id="findBtn" onclick="findSweetSpot()" disabled>
+          <i class="fa-solid fa-location-crosshairs"></i> Find the Midway
+        </button>
+      </div>
     </div>
 
     <!-- RESULTS SECTION (hidden until search) -->

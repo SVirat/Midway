@@ -846,10 +846,8 @@ a {
 }
 
 .btn-find {
+  display: flex;
   width: 100%;
-  max-width: 540px;
-  margin-left: auto;
-  margin-right: auto;
   justify-content: center;
   font-size: 0.92rem;
   padding: 14px;

@@ -138,7 +138,8 @@ const AVATAR_COLORS = [
 const NAMES = ['You', 'Alex', 'Jordan', 'Sam', 'Riley', 'Morgan', 'Casey', 'Taylor', 'Quinn', 'Drew'];
 
 // Vibe → Google Places type + keyword mapping (by category)
-const VIBE_MAP = {
+// Only populated when FEATURE_MORE_OPTIONS is enabled (vibe preset tags are hidden otherwise)
+const VIBE_MAP = FEATURE_MORE_OPTIONS ? {
   // Food
   '☕ Cozy café':      { type: 'cafe',       keyword: 'cozy cafe', category: 'food' },
   '🥗 Healthy':        { type: 'restaurant',  keyword: 'healthy salad bowl', category: 'food' },
@@ -148,7 +149,7 @@ const VIBE_MAP = {
   '🎉 Party':          { type: 'night_club',  keyword: 'party lounge club', category: 'food' },
   // Play
   '⚽ Sports':         { type: 'stadium',     keyword: 'sports arena stadium', category: 'play' },
-  '� Court sports':   { type: 'gym',         keyword: 'badminton pickleball tennis squash court', category: 'play' },
+  '🏸 Court sports':   { type: 'gym',         keyword: 'badminton pickleball tennis squash court', category: 'play' },
   '🎳 Bowling':        { type: 'bowling_alley', keyword: 'bowling alley lanes', category: 'play' },
   '🌳 Parks':          { type: 'park',        keyword: 'park garden', category: 'play' },
   '🎯 Activities':     { type: 'amusement_park', keyword: 'escape room arcade', category: 'play' },
@@ -162,7 +163,7 @@ const VIBE_MAP = {
   '🎭 Theatre':        { type: 'establishment', keyword: 'theatre drama performing arts', category: 'gigs' },
   '🎨 Art & Culture':  { type: 'art_gallery', keyword: 'art gallery museum exhibition', category: 'gigs' },
   '🎪 Events':         { type: 'establishment', keyword: 'events venue festival', category: 'gigs' },
-};
+} : {};
 
 // Map from Google price_level (0-4) to display string
 const PRICE_MAP = ['Free', '$', '$$', '$$$', '$$$$'];
@@ -987,39 +988,47 @@ function findSweetSpot() {
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 100);
 
-  // Step 1: Search for real places near center
-  searchNearbyPlaces(center).then(async (venues) => {
-    if (!venues || venues.length === 0) {
+  // Step 1: If user typed a free-form AI prompt, extract smart keywords first
+  const aiPromptText = document.getElementById('vibeInput').value.trim();
+  const vibeEntry = VIBE_MAP[state.vibe] || null;
+  const isFreeTextPrompt = aiPromptText && !vibeEntry;
+
+  const _doSearch = async function(aiKeywords) {
+    // Step 2: Search for real places near center (with AI keywords if available)
+    document.getElementById('resultsList').innerHTML =
+      '<div style="text-align:center;padding:24px;color:#9CA3AF;"><i class="fa-solid fa-spinner fa-spin"></i> Searching nearby venues...</div>';
+    const venues_raw = await searchNearbyPlaces(center, aiKeywords);
+    if (!venues_raw || venues_raw.length === 0) {
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Find the midway';
       return;
     }
 
-    // Step 2: Fetch real driving distances for top 5 venues (cached per origin/dest pair).
-    // Use haversine to pre-sort, then fetch real distances only for the top candidates.
-    venues = rankVenuesByMode(venues); // initial haversine-based rank
+    // Step 2.5: If AI prompt, fetch Google reviews and let AI filter by review content
+    var venues = rankVenuesByMode(venues_raw);
+    if (isFreeTextPrompt && venues.length > 0) {
+      document.getElementById('resultsList').innerHTML =
+        '<div style="text-align:center;padding:24px;color:#9CA3AF;"><i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> Reading reviews to match your vibe...</div>';
+      await fetchVenueReviews(venues);
+      try {
+        venues = await aiFilterByReviews(aiPromptText, venues);
+      } catch (e) {
+        console.warn('AI review filter failed, using keyword results:', e);
+      }
+    }
+
+    // Step 3: Fetch real driving distances for top 5 venues (cached per origin/dest pair).
+    venues = rankVenuesByMode(venues); // re-rank after possible AI filtering
     const top5 = venues.slice(0, 5);
     document.getElementById('resultsList').innerHTML =
       '<div style="text-align:center;padding:24px;color:#9CA3AF;"><i class="fa-solid fa-spinner fa-spin"></i> Calculating real driving routes...</div>';
     await fetchAllVenueDistances(top5);
 
-    // Step 3: Re-rank top 5 with real distances, append the rest
+    // Step 4: Re-rank top 5 with real distances, append the rest (eco/fair mode only)
     const rest = venues.slice(5);
     const ranked5 = rankVenuesByMode(top5);
     venues = ranked5.concat(rest);
     venues.forEach((v, idx) => { v.id = idx + 1; });
-
-    // Step 4: If AI vibe prompt is set, re-rank using AI
-    const aiPrompt = document.getElementById('vibeInput').value.trim();
-    if (aiPrompt && venues.length > 0) {
-      document.getElementById('resultsList').innerHTML =
-        '<div style="text-align:center;padding:24px;color:#9CA3AF;"><i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> AI is matching your vibe...</div>';
-      try {
-        venues = await aiVibeRank(aiPrompt, venues);
-      } catch (e) {
-        console.warn('AI vibe ranking failed:', e);
-      }
-    }
 
     state._allVenues = venues;
     state.results = venues.slice(0, 5);
@@ -1036,7 +1045,6 @@ function findSweetSpot() {
       distanceData = state.chosenVenue._routeData;
     } else {
       distanceData = await fetchRealDistances(destination);
-      // Cache it on the venue so clicking back won't re-fetch
       if (state.chosenVenue) state.chosenVenue._routeData = distanceData;
     }
     state._distanceData = distanceData;
@@ -1065,30 +1073,48 @@ function findSweetSpot() {
     if (state.results.length > 0) {
       fetchOverlapNotes(state.results);
     }
-  });
+  };
+
+  if (isFreeTextPrompt) {
+    // AI prompt detected — extract smart keywords before searching
+    document.getElementById('resultsList').innerHTML =
+      '<div style="text-align:center;padding:24px;color:#9CA3AF;"><i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> AI is understanding your vibe...</div>';
+    aiExtractKeywords(aiPromptText).then(function(aiKeywords) {
+      _doSearch(aiKeywords); // aiKeywords is null if AI failed (falls back to simple keyword)
+    });
+  } else {
+    // VIBE_MAP tag selected or no prompt — go straight to keyword search
+    _doSearch(null);
+  }
 }
 
 // ---------- Google Places Nearby Search ----------
-function searchNearbyPlaces(center) {
+function searchNearbyPlaces(center, aiKeywords) {
   return new Promise((resolve) => {
     if (!state.googleReady || !state.placesService) {
       resolve(generateFallbackVenues(center));
       return;
     }
 
-    // Map vibe to proper Google Places type + keyword
-    const vibeEntry = VIBE_MAP[state.vibe] || null;
-    const categoryDefaults = {
-      food: { type: 'restaurant', keyword: 'restaurant' },
-      play: { type: 'park', keyword: 'sports park activities' },
-      gigs: { type: 'movie_theater', keyword: 'cinema entertainment' },
-    };
-    const catDefault = categoryDefaults[state.category] || categoryDefaults.food;
-    // If user typed free-form text (no VIBE_MAP match), use keyword-only search
-    // so the type restriction doesn't filter out relevant results
-    const isFreeText = state.vibe && !vibeEntry;
-    const placeType = vibeEntry ? vibeEntry.type : (isFreeText ? null : catDefault.type);
-    const keyword = vibeEntry ? vibeEntry.keyword : (state.vibe || catDefault.keyword);
+    var keyword, placeType;
+
+    if (aiKeywords && aiKeywords.keyword) {
+      // AI-extracted keywords take priority
+      keyword = aiKeywords.keyword;
+      placeType = aiKeywords.type || null;
+    } else {
+      // Fallback: existing VIBE_MAP / raw text keyword logic
+      const vibeEntry = VIBE_MAP[state.vibe] || null;
+      const categoryDefaults = {
+        food: { type: 'restaurant', keyword: 'restaurant' },
+        play: { type: 'park', keyword: 'sports park activities' },
+        gigs: { type: 'movie_theater', keyword: 'cinema entertainment' },
+      };
+      const catDefault = categoryDefaults[state.category] || categoryDefaults.food;
+      const isFreeText = state.vibe && !vibeEntry;
+      placeType = vibeEntry ? vibeEntry.type : (isFreeText ? null : catDefault.type);
+      keyword = vibeEntry ? vibeEntry.keyword : (state.vibe || catDefault.keyword);
+    }
 
     function parseResults(results) {
       return results.filter(p => (p.user_ratings_total || 0) >= 50).map((p, i) => {
@@ -1142,7 +1168,6 @@ function searchNearbyPlaces(center) {
         let venues = parseResults(results);
         venues = rankVenuesByMode(venues);
         venues.forEach((v, idx) => { v.id = idx + 1; });
-        const aiPrompt = document.getElementById('vibeInput').value.trim();
         const limit = 10;
 
         if (venues.length < 5) {
@@ -1251,6 +1276,94 @@ async function _getAccessToken() {
     const { data: { session } } = await _supabaseClient.auth.getSession();
     return session?.access_token || null;
   } catch { return null; }
+}
+
+// ---------- AI Keyword Extraction (search-layer AI) ----------
+async function aiExtractKeywords(userPrompt) {
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = await _getAccessToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch('/api/ai-keywords', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ userPrompt }),
+    });
+    if (!res.ok) throw new Error('AI keywords HTTP ' + res.status);
+    const data = await res.json();
+    if (data.ai_meta && data.ai_meta.attempts) {
+      data.ai_meta.attempts.forEach(function(a) {
+        logApiCall(a.provider, 'ai_keywords', a.success, a.error || null, a.latency_ms || null);
+      });
+    }
+    if (data.keyword) {
+      return { keyword: data.keyword, type: data.type || null };
+    }
+  } catch (e) {
+    console.warn('AI keyword extraction failed, falling back to simple keywords:', e.message);
+  }
+  return null; // fallback to existing keyword logic
+}
+
+// ---------- Fetch Google Reviews for Venues ----------
+function fetchVenueReviews(venues) {
+  // Fetch reviews for up to 5 venues via Place Details API
+  var toFetch = venues.slice(0, 5);
+  return Promise.all(toFetch.map(function(v) {
+    return new Promise(function(resolve) {
+      if (!v.placeId || !state.placesService) { resolve(v); return; }
+      if (!_gmapsMonthlyQuota.check('place_details') || !_gmapsRateLimit.check('place_details')) { resolve(v); return; }
+      var _pdStart = Date.now();
+      state.placesService.getDetails(
+        { placeId: v.placeId, fields: ['reviews'] },
+        function(place, status) {
+          if (status === google.maps.places.PlacesServiceStatus.OK) _gmapsMonthlyQuota.record('place_details');
+          logApiCall('google_maps', 'place_details', status === google.maps.places.PlacesServiceStatus.OK, status !== google.maps.places.PlacesServiceStatus.OK ? status : null, Date.now() - _pdStart);
+          if (status === google.maps.places.PlacesServiceStatus.OK && place && place.reviews) {
+            v._reviews = place.reviews.slice(0, 3).map(function(r) { return r.text || ''; }).filter(Boolean);
+          }
+          resolve(v);
+        }
+      );
+    });
+  }));
+}
+
+// ---------- AI Review-Based Filtering ----------
+async function aiFilterByReviews(userPrompt, venues) {
+  var venuesWithReviews = venues.filter(function(v) { return v._reviews && v._reviews.length > 0; });
+  if (venuesWithReviews.length === 0) return venues;
+
+  var venueList = venues.map(function(v, i) {
+    var reviewSnippets = (v._reviews || []).map(function(r) { return r.slice(0, 150); }).join(' | ');
+    return (i + 1) + '. "' + v.name + '" — type: ' + v.type + ', rating: ' + v.rating + (reviewSnippets ? ', reviews: ' + reviewSnippets : '');
+  }).join('\n');
+
+  var prompt = 'A user wants: "' + userPrompt + '"\n\nHere are ' + venues.length + ' venues with their Google reviews:\n' + venueList + '\n\nBased on the reviews and venue info, return a JSON array of venue numbers (1-indexed) that genuinely match what the user wants, from BEST to WORST match. Exclude venues that clearly don\'t fit. Return ONLY the JSON array like [3,1,5]. No explanation.';
+
+  try {
+    var headers = { 'Content-Type': 'application/json' };
+    var token = await _getAccessToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    var res = await fetch('/api/ai-rank', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({ prompt: prompt }),
+    });
+    if (!res.ok) throw new Error('AI filter HTTP ' + res.status);
+    var data = await res.json();
+    if (data.ai_meta && data.ai_meta.attempts) {
+      data.ai_meta.attempts.forEach(function(a) {
+        logApiCall(a.provider, 'ai_review_filter', a.success, a.error || null, a.latency_ms || null);
+      });
+    }
+    if (Array.isArray(data.ranking) && data.ranking.length > 0) {
+      return applyAIRanking(venues, data.ranking);
+    }
+  } catch (e) {
+    console.warn('AI review filtering failed:', e.message);
+  }
+  return venues;
 }
 
 async function aiVibeRank(userVibe, venues) {

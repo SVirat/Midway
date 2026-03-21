@@ -3,6 +3,7 @@
   "framework": null,
   "rewrites": [
     { "source": "/api/ai-rank", "destination": "/api/ai-rank" },
+    { "source": "/api/ai-keywords", "destination": "/api/ai-keywords" },
     { "source": "/api/resolve-map-link", "destination": "/api/resolve-map-link" }
   ]
 }

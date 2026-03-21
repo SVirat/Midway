@@ -194,6 +194,118 @@ function parseRankingJSON(text) {
   return JSON.parse(match[0]);
 }
 
+// ---------- AI Keyword Extraction Endpoint ----------
+app.post('/api/ai-keywords', async (req, res) => {
+  const ip = getClientIp(req);
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const isAuthenticated = token ? await verifySupabaseToken(token) : false;
+  const limit = isAuthenticated ? RATE_LIMIT_AUTH : RATE_LIMIT_ANON;
+
+  if (!checkRateLimit(ip, limit)) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
+  const { userPrompt } = req.body;
+  if (!userPrompt || typeof userPrompt !== 'string' || userPrompt.length > 500) {
+    return res.status(400).json({ error: 'Invalid prompt' });
+  }
+
+  const systemPrompt = 'You are a search keyword extractor for Google Places API. Given a user\'s natural language description of the kind of place they want, extract the best Google Places search parameters.\n\nRules:\n- "keyword" should be 2-5 words optimized for Google Places nearbySearch. Focus on the MOST important aspects of what the user wants.\n- "type" should be ONE Google Places type from this list ONLY: restaurant, cafe, bar, night_club, park, gym, stadium, bowling_alley, movie_theater, amusement_park, spa, art_gallery, establishment. Pick the closest match, or use null if none fits well.\n- If the user mentions multiple activities (e.g. "fries and golf"), prioritize the primary venue type and include other aspects in the keyword.\n\nReturn ONLY a JSON object like: {"keyword": "sports bar fries", "type": "bar"}\nNo explanation, just the JSON object.';
+
+  const fullPrompt = `User request: "${userPrompt}"\n\nExtract the best Google Places search keyword and type.`;
+
+  const providerNames = [];
+  const providers = [];
+  if (GEMINI_API_KEY) {
+    providerNames.push('gemini');
+    providers.push(async () => {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ parts: [{ text: fullPrompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 100 },
+        }),
+      });
+      if (!resp.ok) throw new Error('Gemini HTTP ' + resp.status);
+      const data = await resp.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return parseKeywordsJSON(text);
+    });
+  }
+  if (OPENAI_API_KEY) {
+    providerNames.push('openai');
+    providers.push(async () => {
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_API_KEY },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: fullPrompt }],
+          temperature: 0.2, max_tokens: 100,
+        }),
+      });
+      if (!resp.ok) throw new Error('OpenAI HTTP ' + resp.status);
+      const data = await resp.json();
+      const text = data.choices?.[0]?.message?.content || '';
+      return parseKeywordsJSON(text);
+    });
+  }
+  if (CLAUDE_API_KEY) {
+    providerNames.push('claude');
+    providers.push(async () => {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': CLAUDE_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514', max_tokens: 100,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: fullPrompt }],
+        }),
+      });
+      if (!resp.ok) throw new Error('Claude HTTP ' + resp.status);
+      const data = await resp.json();
+      const text = data.content?.[0]?.text || '';
+      return parseKeywordsJSON(text);
+    });
+  }
+
+  if (providers.length === 0) {
+    return res.status(503).json({ error: 'No AI providers configured' });
+  }
+
+  const attempts = [];
+  for (let i = 0; i < providers.length; i++) {
+    const start = Date.now();
+    try {
+      const result = await providers[i]();
+      const latency = Date.now() - start;
+      attempts.push({ provider: providerNames[i], success: true, latency_ms: latency });
+      if (result && result.keyword) {
+        return res.json({ keyword: result.keyword, type: result.type || null, ai_meta: { provider: providerNames[i], attempts } });
+      }
+      attempts[attempts.length - 1].success = false;
+      attempts[attempts.length - 1].error = 'Empty result';
+    } catch (e) {
+      attempts.push({ provider: providerNames[i], success: false, latency_ms: Date.now() - start, error: e.message });
+      console.warn('AI keywords provider failed, trying next:', e.message);
+    }
+  }
+
+  res.status(502).json({ error: 'All AI providers failed', ai_meta: { attempts } });
+});
+
+function parseKeywordsJSON(text) {
+  const match = text.match(/\{[\s\S]*?\}/);
+  if (!match) throw new Error('No JSON object found in AI response');
+  const obj = JSON.parse(match[0]);
+  if (!obj.keyword || typeof obj.keyword !== 'string') throw new Error('Missing keyword field');
+  return { keyword: obj.keyword.slice(0, 100), type: obj.type || null };
+}
+
 // ---------- Resolve short map links ----------
 app.get('/api/resolve-map-link', async (req, res) => {
   const url = req.query.url;
