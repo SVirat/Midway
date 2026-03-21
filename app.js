@@ -2599,6 +2599,8 @@ document.addEventListener('DOMContentLoaded', function() {
   if (FEATURE_MORE_OPTIONS) {
     var moreOpts = document.getElementById('moreOptionsSection');
     if (moreOpts) moreOpts.style.display = '';
+    var vibeMore = document.getElementById('vibeMoreOptions');
+    if (vibeMore) vibeMore.style.display = '';
   }
 
   // Show test mode button only if feature flag is on

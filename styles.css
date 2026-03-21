@@ -266,10 +266,13 @@ a {
 
 .setup-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-lg);
   align-items: start;
   margin-bottom: var(--space-lg);
+  max-width: 540px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .setup-header {
@@ -393,6 +396,26 @@ a {
   align-items: center;
   gap: var(--space-sm);
   color: var(--text-muted);
+}
+
+.btn-invite-inline {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+
+.btn-invite-inline:hover {
+  background: rgba(74, 108, 247, 0.08);
 }
 
 .locations-list {
@@ -540,11 +563,6 @@ a {
   border-style: solid;
 }
 
-.invite-bar {
-  margin-top: var(--space-md);
-  text-align: center;
-}
-
 .invite-subtext {
   font-size: 0.72rem;
   color: var(--text-dim);
@@ -650,24 +668,6 @@ a {
   font-size: 0.75rem;
 }
 
-/* Vibe Panel */
-.vibe-panel {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg);
-}
-
-.vibe-panel h3 {
-  font-size: 0.88rem;
-  font-weight: 600;
-  margin-bottom: var(--space-md);
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  color: var(--text-muted);
-}
-
 /* Category Toggle */
 .category-toggle {
   display: flex;
@@ -743,7 +743,9 @@ a {
 }
 
 .ai-prompt-section {
-  padding-top: var(--space-sm);
+  padding-top: var(--space-md);
+  margin-top: var(--space-md);
+  border-top: 1px solid var(--border);
 }
 
 .ai-prompt-label {
@@ -2036,7 +2038,6 @@ a {
   }
 
   .setup-columns {
-    grid-template-columns: 1fr;
     gap: var(--space-md);
   }
 
@@ -2117,17 +2118,7 @@ a {
     border-width: 2px;
   }
 
-  .invite-bar .btn {
-    font-size: 0.8rem;
-    padding: 10px 14px;
-    min-height: 44px;
-  }
-
-  /* --- Vibe Panel --- */
-  .vibe-panel {
-    padding: var(--space-md);
-  }
-
+  /* --- Vibe Panel (now inside locations panel) --- */
   .category-toggle {
     gap: 4px;
     padding: 3px;
@@ -2490,8 +2481,7 @@ a {
     padding: 0 var(--space-sm);
   }
 
-  .locations-panel,
-  .vibe-panel {
+  .locations-panel {
     padding: var(--space-sm) var(--space-md);
   }
 

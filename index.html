@@ -65,29 +65,27 @@
 
       <!-- Location + Vibe side by side -->
       <div class="setup-columns">
-        <!-- Location Inputs -->
+        <!-- Location Inputs + AI Agent -->
         <div class="locations-panel">
-          <h3><i class="fa-solid fa-users"></i> Locations</h3>
+          <h3>
+            <i class="fa-solid fa-users"></i> Locations
+            <button class="btn-invite-inline" onclick="copyInviteLink()">
+              <i class="fa-solid fa-share-nodes"></i> Invite Friends
+            </button>
+          </h3>
           <div id="locationsList" class="locations-list"></div>
           <button class="btn btn-outline btn-add-location" id="addLocationBtn" onclick="addLocationInput()">
             <i class="fa-solid fa-plus"></i> Add Person
           </button>
-          <div class="invite-bar">
-            <button class="btn btn-ghost" onclick="copyInviteLink()">
-              <i class="fa-solid fa-share-nodes"></i> Invite Friends to Join
-            </button>
-          </div>
-        </div>
 
-        <!-- Vibe Check -->
-        <div class="vibe-panel">
+          <!-- AI Agent -->
           <div class="ai-prompt-section" id="aiPromptSection">
             <p class="ai-prompt-label"><i class="fa-solid fa-sparkles"></i>Tell our <b>AI Agent</b> the vibe you want</p>
             <div class="ai-prompt-wrap" id="aiPromptWrap">
               <input type="text" id="vibeInput" class="ai-prompt-input" placeholder='e.g. "great outdoor seating with tasty fries"' onchange="runVibeCheck()" />
             </div>
           </div>
-          <details class="vibe-more-options">
+          <details class="vibe-more-options" id="vibeMoreOptions" style="display:none">
             <summary class="vibe-more-toggle">More options <i class="fa-solid fa-chevron-down vibe-more-arrow"></i></summary>
             <div class="vibe-more-body">
               <p class="vibe-preset-label">... or, select from some of these vibes</p>
@@ -109,6 +107,7 @@
           <i class="fa-solid fa-chevron-down more-options-arrow"></i>
         </button>
         <div class="more-options-body" id="moreOptionsBody" style="display:none">
+          <!-- Time/calendar selector (commented out — kept for future use)
           <label class="meeting-time-label">
             <i class="fa-solid fa-clock"></i> When are you meeting?
           </label>
@@ -145,6 +144,7 @@
               </select>
             </div>
           </div>
+          -->
         </div>
       </div>
 
