@@ -1,4 +1,4 @@
-# Midway — Product Requirements Document
+# Midway: Product Requirements Document
 
 **Version:** 1.0  
 **Last Updated:** March 21, 2026  
