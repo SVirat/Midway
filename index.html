@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meet Midway</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+  <link rel="manifest" href="assets/site.webmanifest" />
+</head>
+<body>
+  <!-- ============ NAVBAR ============ -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="logo-icon">😊</div>
+      <span class="logo-text">Midway</span>
+    </div>
+    <div class="nav-right">
+      <button class="btn btn-sm btn-primary" id="shareBtn" onclick="showShareModal()" style="display:none">
+        <i class="fa-solid fa-share-nodes"></i> Share
+      </button>
+      <!-- Auth -->
+      <div class="auth-area" id="authArea">
+        <button class="btn btn-sm btn-google-signin" id="googleSignInBtn" onclick="signInWithGoogle()">
+          <i class="fa-brands fa-google"></i> Sign In
+        </button>
+        <div class="user-menu" id="userMenu" style="display:none">
+          <button class="user-avatar-btn" id="userAvatarBtn" onclick="toggleUserDropdown()">
+            <img id="userAvatar" src="" alt="" />
+          </button>
+          <div class="user-dropdown" id="userDropdown" style="display:none">
+            <div class="user-dropdown-header">
+              <img id="dropdownAvatar" src="" alt="" />
+              <div>
+                <div class="user-dropdown-name" id="dropdownName"></div>
+                <div class="user-dropdown-email" id="dropdownEmail"></div>
+              </div>
+            </div>
+            <div class="user-dropdown-divider"></div>
+            <button class="user-dropdown-item signout" onclick="signOutUser()">
+              <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ MAIN CONTENT (single scrollable page) ============ -->
+  <main class="page-content">
+    <!-- SETUP SECTION -->
+    <div class="setup-container">
+      <div class="setup-header">
+        <h2>Meet <span class="gradient-text">Midway</span></h2>
+        <p>Add locations for everyone in your group, then find the best meeting spot.</p>
+        <button class="btn btn-ghost btn-sm" id="testModeBtn" onclick="startTestMode()" style="margin-top:8px; display:none">
+          <i class="fa-solid fa-flask"></i> Test Mode
+        </button>
+      </div>
+
+      <!-- Location + Vibe side by side -->
+      <div class="setup-columns">
+        <!-- Location Inputs -->
+        <div class="locations-panel">
+          <h3><i class="fa-solid fa-users"></i> Locations</h3>
+          <div id="locationsList" class="locations-list"></div>
+          <button class="btn btn-outline btn-add-location" id="addLocationBtn" onclick="addLocationInput()">
+            <i class="fa-solid fa-plus"></i> Add Person
+          </button>
+          <div class="invite-bar">
+            <button class="btn btn-ghost" onclick="copyInviteLink()">
+              <i class="fa-solid fa-share-nodes"></i> Invite Friends to Join Map
+            </button>
+          </div>
+        </div>
+
+        <!-- Vibe Check -->
+        <div class="vibe-panel">
+          <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Vibe Check</h3>
+          <div class="category-toggle">
+            <button class="category-btn active" data-cat="food" onclick="setCategory('food', this)"><i class="fa-solid fa-utensils"></i> Food</button>
+            <button class="category-btn" data-cat="play" onclick="setCategory('play', this)"><i class="fa-solid fa-table-tennis-paddle-ball"></i> Play</button>
+            <button class="category-btn" data-cat="gigs" onclick="setCategory('gigs', this)"><i class="fa-solid fa-ticket"></i> Gigs</button>
+          </div>
+          <div class="vibe-tags" id="vibeTags"></div>
+          <div class="ai-prompt-section" id="aiPromptSection">
+            <p class="ai-prompt-label"><i class="fa-solid fa-sparkles"></i><b>... or, let our AI Agent decide for you</b><i class="fa-solid fa-lock ai-lock" id="aiLock" title="Sign in for this feature"></i></p>
+            <div class="ai-prompt-wrap" id="aiPromptWrap">
+              <input type="text" id="vibeInput" class="ai-prompt-input" placeholder='e.g. "great outdoor seating with tasty pastries"' onchange="runVibeCheck()" disabled />
+              <div class="ai-locked-overlay" id="aiLockedOverlay"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- More Options (controlled by FEATURE_MORE_OPTIONS flag in app.js) -->
+      <div class="more-options-section" id="moreOptionsSection" style="display:none">
+        <button class="more-options-toggle" onclick="toggleMoreOptions()">
+          <i class="fa-solid fa-gear"></i> More options
+          <i class="fa-solid fa-chevron-down more-options-arrow"></i>
+        </button>
+        <div class="more-options-body" id="moreOptionsBody" style="display:none">
+          <label class="meeting-time-label">
+            <i class="fa-solid fa-clock"></i> When are you meeting?
+          </label>
+          <div class="meeting-time-inputs">
+            <div class="custom-picker" onclick="document.getElementById('meetDateHidden').showPicker()">
+              <i class="fa-solid fa-calendar"></i>
+              <span id="meetDateDisplay">Today</span>
+              <input type="date" id="meetDateHidden" onchange="onDatePicked(this)" />
+            </div>
+            <div class="custom-picker" id="hourPickerWrap">
+              <i class="fa-solid fa-clock"></i>
+              <span id="meetHourDisplay">Now</span>
+              <select id="meetHour" onchange="onHourPicked(this)">
+                <option value="" selected>Now</option>
+                <option value="6">6 AM</option>
+                <option value="7">7 AM</option>
+                <option value="8">8 AM</option>
+                <option value="9">9 AM</option>
+                <option value="10">10 AM</option>
+                <option value="11">11 AM</option>
+                <option value="12">12 PM</option>
+                <option value="13">1 PM</option>
+                <option value="14">2 PM</option>
+                <option value="15">3 PM</option>
+                <option value="16">4 PM</option>
+                <option value="17">5 PM</option>
+                <option value="18">6 PM</option>
+                <option value="19">7 PM</option>
+                <option value="20">8 PM</option>
+                <option value="21">9 PM</option>
+                <option value="22">10 PM</option>
+                <option value="23">11 PM</option>
+                <option value="0">12 AM</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode Toggle -->
+      <div class="mode-toggle-container">
+        <label class="mode-toggle">
+          <input type="checkbox" id="modeToggle" />
+          <div class="toggle-track">
+            <div class="toggle-option fairness-opt">
+              😊 Fair
+            </div>
+            <div class="toggle-option eco-opt">
+              <i class="fa-solid fa-leaf"></i> Eco
+            </div>
+            <div class="toggle-thumb"></div>
+          </div>
+        </label>
+        <span class="mode-description" id="modeDescription">
+          <strong>Fair:</strong> No one has to travel too far
+        </span>
+      </div>
+
+      <!-- Action -->
+      <button class="btn btn-primary btn-lg btn-find" id="findBtn" onclick="findSweetSpot()" disabled>
+        <i class="fa-solid fa-location-crosshairs"></i> Find the Midway
+      </button>
+    </div>
+
+    <!-- RESULTS SECTION (hidden until search) -->
+    <div id="resultsSection" class="results-section" style="display:none">
+      <div class="results-top-header">
+        <h3>Top Spots</h3>
+        <div class="results-mode-badge" id="resultModeBadge">
+          😊 Fair
+        </div>
+      </div>
+
+      <div class="results-layout-inline">
+        <div class="results-sidebar-inline">
+          <div class="results-list" id="resultsList"></div>
+        </div>
+        <div class="results-map-container-inline">
+          <div id="map"></div>
+        </div>
+      </div>
+
+      <div class="results-divider">
+        <span>Results</span>
+      </div>
+
+      <div class="results-summary-bar">
+        <div class="results-summary" id="resultsSummary"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ SHARE MODAL ============ -->
+  <div class="modal-overlay" id="shareModal" onclick="hideShareModal(event)">
+    <div class="modal share-modal" onclick="event.stopPropagation()">
+      <button class="modal-close" onclick="hideShareModal()"><i class="fa-solid fa-xmark"></i></button>
+      <h3>Share Your Meetup</h3>
+      <div class="fairness-card-preview" id="fairnessCard"></div>
+      <div class="share-buttons">
+        <button class="btn btn-share copy" onclick="copyShareMessage()">
+          <i class="fa-solid fa-copy"></i> Copy Message
+        </button>
+        <button class="btn btn-share whatsapp" onclick="shareToWhatsApp()">
+          <i class="fa-brands fa-whatsapp"></i> WhatsApp
+        </button>
+      </div>
+      <div class="share-preview" id="sharePreview" style="display:none">
+        <div class="share-preview-label">Copied to clipboard:</div>
+        <div class="share-preview-text" id="sharePreviewText"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TOAST ============ -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ============ SIDE PANEL (saved locations, friends, favorites) ============ -->
+  <div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
+  <div class="side-panel" id="sidePanel">
+    <div class="side-panel-header">
+      <h3 id="sidePanelTitle">Saved</h3>
+      <button class="modal-close" onclick="closeSidePanel()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="side-panel-body" id="sidePanelBody"></div>
+  </div>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="site-footer">
+    Made with <span class="heart">&#10084;&#65039;</span> in Hyderabad. <a id="supportLink" href="#" target="_blank" rel="noopener noreferrer">Support the developer</a>.
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
