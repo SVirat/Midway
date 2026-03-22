@@ -876,21 +876,60 @@ function detectCategoryFromPrompt(prompt) {
 }
 
 // ---------- Find Sweet Spot ----------
-function showResultsLoading(message) {
-  var layout = document.querySelector('.results-layout-inline');
-  if (!layout) return;
-  // Remove any existing overlay
-  var existing = layout.querySelector('.results-loading-overlay');
-  if (existing) existing.remove();
-  var overlay = document.createElement('div');
-  overlay.className = 'results-loading-overlay';
-  overlay.innerHTML = '<div class="results-loading-spinner"></div><div class="results-loading-text">' + message + '</div>';
-  layout.appendChild(overlay);
+var _progressBar = {
+  current: 0,
+  target: 0,
+  raf: null,
+  speed: 0.4, // percent per frame (~60fps)
+};
+
+function _animateProgress() {
+  var diff = _progressBar.target - _progressBar.current;
+  if (Math.abs(diff) < 0.2) {
+    _progressBar.current = _progressBar.target;
+  } else {
+    // Ease toward target — faster when far, slower when close
+    _progressBar.current += diff * 0.06;
+  }
+  var fill = document.getElementById('progressBarFill');
+  if (fill) fill.style.width = _progressBar.current + '%';
+  if (_progressBar.current < _progressBar.target || _progressBar.target < 100) {
+    _progressBar.raf = requestAnimationFrame(_animateProgress);
+  } else {
+    // Reached 100 — done
+    cancelAnimationFrame(_progressBar.raf);
+    _progressBar.raf = null;
+  }
+}
+
+function showResultsLoading(message, targetPercent) {
+  var track = document.getElementById('progressBarTrack');
+  var label = document.getElementById('progressBarLabel');
+  if (!track) return;
+  track.classList.add('active');
+  if (label) label.textContent = message;
+  // Set target — never go backwards
+  var pct = targetPercent || 15;
+  if (pct > _progressBar.target) _progressBar.target = pct;
+  if (!_progressBar.raf) _progressBar.raf = requestAnimationFrame(_animateProgress);
 }
 
 function hideResultsLoading() {
-  var overlay = document.querySelector('.results-loading-overlay');
-  if (overlay) overlay.remove();
+  // Animate to 100%, then hide after transition
+  _progressBar.target = 100;
+  if (!_progressBar.raf) _progressBar.raf = requestAnimationFrame(_animateProgress);
+  setTimeout(function() {
+    var track = document.getElementById('progressBarTrack');
+    if (track) track.classList.remove('active');
+    // Reset for next use
+    _progressBar.current = 0;
+    _progressBar.target = 0;
+    var fill = document.getElementById('progressBarFill');
+    if (fill) fill.style.width = '0%';
+    var label = document.getElementById('progressBarLabel');
+    if (label) label.textContent = '';
+    if (_progressBar.raf) { cancelAnimationFrame(_progressBar.raf); _progressBar.raf = null; }
+  }, 700);
 }
 
 function updateFindButton() {
@@ -996,9 +1035,12 @@ function findSweetSpot() {
   }
 
   // Show loading indicators
-  document.getElementById('resultsSummary').innerHTML = '';
   document.getElementById('resultsList').innerHTML = '';
-  showResultsLoading('Searching nearby venues...');
+  _progressBar.current = 0;
+  _progressBar.target = 0;
+  var fill = document.getElementById('progressBarFill');
+  if (fill) fill.style.width = '0%';
+  showResultsLoading('Searching nearby venues...', 15);
 
   setTimeout(() => {
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1011,9 +1053,10 @@ function findSweetSpot() {
 
   const _doSearch = async function(aiKeywords) {
     // Step 2: Search for real places near center (with AI keywords if available)
-    showResultsLoading('Searching nearby venues...');
+    showResultsLoading('Searching nearby venues...', 35);
     const venues_raw = await searchNearbyPlaces(center, aiKeywords);
     if (!venues_raw || venues_raw.length === 0) {
+      hideResultsLoading();
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Find the midway';
       return;
@@ -1022,7 +1065,7 @@ function findSweetSpot() {
     // Step 2.5: If AI prompt, fetch Google reviews and let AI filter by review content
     var venues = rankVenuesByMode(venues_raw);
     if (isFreeTextPrompt && venues.length > 0) {
-      showResultsLoading('AI is reading reviews...');
+      showResultsLoading('AI is reading reviews...', 60);
       await fetchVenueReviews(venues);
       try {
         venues = await aiFilterByReviews(aiPromptText, venues);
@@ -1046,6 +1089,7 @@ function findSweetSpot() {
     state._resultsLocationCount = state.locations.length;
 
     // Step 5: Use cached route data when available, otherwise fetch for #1 only
+    showResultsLoading('Mapping routes...', 80);
     const destination = state.chosenVenue
       ? { lat: state.chosenVenue.lat, lng: state.chosenVenue.lng }
       : center;
@@ -1092,7 +1136,7 @@ function findSweetSpot() {
 
   if (isFreeTextPrompt) {
     // AI prompt detected — extract smart keywords before searching
-    showResultsLoading('AI is understanding your vibe...');
+    showResultsLoading('AI is understanding your vibe...', 20);
     aiExtractKeywords(aiPromptText).then(function(aiKeywords) {
       _doSearch(aiKeywords); // aiKeywords is null if AI failed (falls back to simple keyword)
     });
@@ -1663,48 +1707,7 @@ function haversine(lat1, lon1, lat2, lon2) {
 
 // ---------- Render Summary with Real Distances ----------
 function renderSummaryFromRoutes(center, distanceData) {
-  const totalDist = distanceData.reduce((s, d) => s + d.distKm, 0);
-  const distances = distanceData.map(d => d.distKm);
-  const maxDiff = Math.max(...distances) - Math.min(...distances);
-  const farthestIdx = distances.indexOf(Math.max(...distances));
-  const farthestPerson = distanceData[farthestIdx].loc;
-
-  const hasDurations = distanceData.some(d => d.durationMin !== null);
-  const totalDuration = hasDurations
-    ? distanceData.reduce((s, d) => s + (d.durationMin || 0), 0)
-    : null;
-
-  document.getElementById('resultsSummary').innerHTML = `
-    <div class="summary-horizontal">
-      <table class="summary-table">
-        <thead><tr><th></th><th>Person</th><th>Distance</th><th>Drive</th></tr></thead>
-        <tbody>
-          ${distanceData.map((d, i) => `
-            <tr>
-              <td><span class="sp-dot" style="background:${AVATAR_COLORS[i % AVATAR_COLORS.length]}"></span></td>
-              <td>${escapeHtml(d.loc.name)}</td>
-              <td>${d.distKm.toFixed(1)} km</td>
-              <td>${d.durationMin !== null ? d.durationMin + ' min' : '—'}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      <div class="summary-averages">
-        <div class="summary-avg">
-          <div class="val">${(totalDist / distanceData.length).toFixed(1)} km</div>
-          <div class="label">Avg Distance</div>
-        </div>
-        <div class="summary-avg">
-          <div class="val">${totalDuration !== null ? Math.round(totalDuration / distanceData.length) + ' min' : '—'}</div>
-          <div class="label">Avg Drive Time</div>
-        </div>
-      </div>
-    </div>
-    <div class="summary-hero-badge">
-      &#x1F3C6; <strong>${escapeHtml(farthestPerson.name)}</strong> ${farthestPerson.name === 'You' ? 'are' : 'is'} the Travel Hero!
-      Everyone else owes ${farthestPerson.name === 'You' ? 'you' : 'them'} the first round.
-    </div>
-  `;
+  // Summary table removed
 }
 
 // ---------- Render Venue List ----------
@@ -1835,8 +1838,7 @@ function selectVenue(vid) {
     renderMap(dest, state._distanceData);
   } else {
     // Show inline loading while routes are fetched
-    document.getElementById('resultsSummary').innerHTML =
-      '<div style="text-align:center;padding:18px;color:#9CA3AF;"><i class="fa-solid fa-spinner fa-spin"></i> Fetching driving routes...</div>';
+
     fetchRealDistances(dest).then(distanceData => {
       state._distanceData = distanceData;
       state.chosenVenue._routeData = distanceData;
@@ -1944,6 +1946,50 @@ function renderMap(center, distanceData) {
   state.markers = [];
   state.routeLayers = [];
 
+  // --- Route hover/click interaction state ---
+  var activeRouteIdx = null;
+  var hideTimeout = null;
+  var lastClickTime = 0;
+  var routePopup = L.popup({ closeButton: false, className: 'route-info-popup', offset: [0, -8], autoPan: false });
+
+  function showRouteInfo(idx, latlng) {
+    clearTimeout(hideTimeout);
+    var d = distanceData[idx];
+    var color = AVATAR_COLORS[idx % AVATAR_COLORS.length];
+    var content = '<div class="route-popup-content">' +
+      '<div class="route-popup-name" style="border-left:3px solid ' + color + ';padding-left:8px">' + escapeHtml(d.loc.name) + '</div>' +
+      '<div class="route-popup-stats">' +
+      '<span><i class="fa-solid fa-road"></i> ' + d.distKm.toFixed(1) + ' km</span>' +
+      '<span><i class="fa-solid fa-clock"></i> ' + (d.durationMin !== null ? d.durationMin + ' min' : '\u2014') + '</span>' +
+      '</div></div>';
+    routePopup.setLatLng(latlng).setContent(content).openOn(state.map);
+
+    if (activeRouteIdx !== idx) {
+      activeRouteIdx = idx;
+      state.routeLayers.forEach(function(r, j) {
+        if (j === idx) {
+          r.setStyle({ weight: 6, opacity: 1 });
+          r.bringToFront();
+        } else {
+          r.setStyle({ weight: 3, opacity: 0.25 });
+        }
+      });
+      state.markers.forEach(function(m) { if (m._icon) m._icon.style.zIndex = ''; });
+      if (state.markers[idx] && state.markers[idx]._icon) state.markers[idx]._icon.style.zIndex = 10000;
+    }
+  }
+
+  function hideRouteInfo() {
+    state.map.closePopup(routePopup);
+    activeRouteIdx = null;
+    state.routeLayers.forEach(function(r) { r.setStyle({ weight: 3, opacity: 0.6 }); });
+    state.markers.forEach(function(m) { if (m._icon) m._icon.style.zIndex = ''; });
+  }
+
+  function scheduleHide() {
+    hideTimeout = setTimeout(hideRouteInfo, 200);
+  }
+
   // Draw real routes from each person to the center
   distanceData.forEach((d, i) => {
     const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
@@ -1956,6 +2002,14 @@ function renderMap(center, distanceData) {
     }).addTo(state.map);
     state.routeLayers.push(routeLine);
 
+    // Invisible wider polyline as hover/tap target for the route
+    var hitLine = L.polyline(d.routePoints, {
+      color: 'transparent',
+      weight: 20,
+      opacity: 0,
+      interactive: true,
+    }).addTo(state.map);
+
     // Person marker
     const icon = L.divIcon({
       className: '',
@@ -1964,14 +2018,34 @@ function renderMap(center, distanceData) {
       iconAnchor: [18, 18],
     });
 
-    const marker = L.marker([d.loc.lat, d.loc.lng], { icon: icon })
-      .addTo(state.map)
-      .bindPopup('<strong>' + escapeHtml(d.loc.name) + '</strong><br>' + escapeHtml(d.loc.address) + '<br>' + d.distKm.toFixed(1) + ' km' + (d.durationMin !== null ? ' &middot; ' + d.durationMin + ' min drive' : ''));
+    const marker = L.marker([d.loc.lat, d.loc.lng], { icon: icon }).addTo(state.map);
     state.markers.push(marker);
+
+    // Bind interaction: hover for desktop, click for mobile, both always attached
+    hitLine.on('mouseover', function(e) { showRouteInfo(i, e.latlng); });
+    hitLine.on('mousemove', function(e) { if (activeRouteIdx === i) routePopup.setLatLng(e.latlng); });
+    hitLine.on('mouseout', function() { if (Date.now() - lastClickTime > 400) scheduleHide(); });
+    hitLine.on('click', function(e) { L.DomEvent.stopPropagation(e); lastClickTime = Date.now(); clearTimeout(hideTimeout); showRouteInfo(i, e.latlng); });
+    marker.on('mouseover', function() { showRouteInfo(i, marker.getLatLng()); });
+    marker.on('mouseout', function() { if (Date.now() - lastClickTime > 400) scheduleHide(); });
+    marker.on('click', function(e) { L.DomEvent.stopPropagation(e); lastClickTime = Date.now(); clearTimeout(hideTimeout); showRouteInfo(i, marker.getLatLng()); });
   });
 
-  // Venue markers
-  state.results.forEach((v, i) => {
+  // Keep popup alive when cursor moves onto popup element itself
+  state.map.on('popupopen', function() {
+    var el = routePopup.getElement();
+    if (el) {
+      el.addEventListener('mouseenter', function() { clearTimeout(hideTimeout); });
+      el.addEventListener('mouseleave', scheduleHide);
+    }
+  });
+
+  // Dismiss on map click
+  state.map.on('click', hideRouteInfo);
+
+  // Venue markers — use sorted order to match sidebar numbering
+  var sortedVenues = getSortedVenues();
+  sortedVenues.forEach((v, i) => {
     const vIcon = L.divIcon({
       className: '',
       html: '<div class="venue-marker">' + (i + 1) + '</div>',
