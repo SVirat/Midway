@@ -1031,16 +1031,13 @@ function findSweetSpot() {
       }
     }
 
-    // Step 3: Fetch real driving distances for top 5 venues (cached per origin/dest pair).
-    venues = rankVenuesByMode(venues); // re-rank after possible AI filtering
+    // Step 3: Rank venues by haversine (free). Real routes are fetched lazily per venue selection.
+    venues = rankVenuesByMode(venues); // ranks using haversine fallback when _realDists not set
     const top5 = venues.slice(0, 5);
-    showResultsLoading('Checking real driving routes...');
-    await fetchAllVenueDistances(top5);
 
-    // Step 4: Re-rank top 5 with real distances, append the rest (eco/fair mode only)
+    // Step 4: Combine top 5 (haversine-ranked) with the rest
     const rest = venues.slice(5);
-    const ranked5 = rankVenuesByMode(top5);
-    venues = ranked5.concat(rest);
+    venues = top5.concat(rest);
     venues.forEach((v, idx) => { v.id = idx + 1; });
 
     state._allVenues = venues;
@@ -1058,7 +1055,11 @@ function findSweetSpot() {
       distanceData = state.chosenVenue._routeData;
     } else {
       distanceData = await fetchRealDistances(destination);
-      if (state.chosenVenue) state.chosenVenue._routeData = distanceData;
+      if (state.chosenVenue) {
+        state.chosenVenue._routeData = distanceData;
+        state.chosenVenue._realDists = distanceData.map(d => d.distKm);
+        state.chosenVenue._realTimes = distanceData.map(d => d.durationMin);
+      }
     }
     state._distanceData = distanceData;
 
@@ -1554,16 +1555,13 @@ function fetchOneRoute(origin, dest, retries) {
   });
 }
 
-// Fetch real driving distances from all people to a single destination
+// Fetch real driving distances from all people to a single destination (parallel)
 function fetchRealDistances(center) {
-  return new Promise(async (resolve) => {
-    const results = [];
-    for (const loc of state.locations) {
-      const route = await fetchOneRoute(loc, center, 0);
-      results.push({ loc, ...route });
-    }
-    resolve(results);
-  });
+  return Promise.all(
+    state.locations.map(loc =>
+      fetchOneRoute(loc, center, 0).then(route => ({ loc, ...route }))
+    )
+  );
 }
 
 // Fetch real driving distances from all people to ALL candidate venues
@@ -1836,9 +1834,14 @@ function selectVenue(vid) {
     renderSummaryFromRoutes(dest, state._distanceData);
     renderMap(dest, state._distanceData);
   } else {
+    // Show inline loading while routes are fetched
+    document.getElementById('resultsSummary').innerHTML =
+      '<div style="text-align:center;padding:18px;color:#9CA3AF;"><i class="fa-solid fa-spinner fa-spin"></i> Fetching driving routes...</div>';
     fetchRealDistances(dest).then(distanceData => {
       state._distanceData = distanceData;
-      state.chosenVenue._routeData = distanceData; // cache for future clicks
+      state.chosenVenue._routeData = distanceData;
+      state.chosenVenue._realDists = distanceData.map(d => d.distKm);
+      state.chosenVenue._realTimes = distanceData.map(d => d.durationMin);
       renderSummaryFromRoutes(dest, distanceData);
       renderMap(dest, distanceData);
     });
@@ -1872,21 +1875,11 @@ async function loadMoreOptions() {
   const more = state._allVenues.slice(0, 10);
   if (more.length <= state.results.length) return;
 
-  // Lazy-fetch real distances for venues 6-10 (uses cache for already-fetched pairs)
-  const newVenues = more.filter(v => !v._realDists);
-  if (newVenues.length > 0) {
-    const btn = document.getElementById('findMoreBtn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading routes...'; }
-    await fetchAllVenueDistances(newVenues);
-    // Re-rank all 10 with real distances
-    const ranked = rankVenuesByMode(more);
-    ranked.forEach((v, idx) => { v.id = idx + 1; });
-    state._allVenues = ranked.concat(state._allVenues.slice(10));
-    state.results = ranked;
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plus"></i> Find more options'; }
-  } else {
-    state.results = more;
-  }
+  // Rank all venues by haversine (real routes fetched lazily when a venue is selected)
+  const ranked = rankVenuesByMode(more);
+  ranked.forEach((v, idx) => { v.id = idx + 1; });
+  state._allVenues = ranked.concat(state._allVenues.slice(10));
+  state.results = ranked;
 
   renderVenueList();
   renderMap(

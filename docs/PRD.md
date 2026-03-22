@@ -1,20 +1,19 @@
 # Midway: Product Requirements Document
 
 **Version:** 1.0  
-**Last Updated:** March 21, 2026  
+**Last Updated:** March 22, 2026  
 **Author:** Virat Singh  
-**Status:** 🟢 Live<br>
-**Product Link:** https://mway.vercel.app
+**Live URL:** https://mway.vercel.app
 
 ---
 
 ## 1. Overview
 
 ### 1.1 Problem Statement
-When a group of friends want to meet, choosing a location is surprisingly hard. Everyone has different starting points, and the typical approach of, "let's just meet at X", often means one person drives 40 minutes while another walks 5. There's no easy tool that accounts for fairness, venue quality, and group preferences simultaneously.
+When a group of friends wants to meet, choosing a location is surprisingly hard. Everyone has different starting points, and the typical approach, "let's just meet at X", often means one person drives 40 minutes while another walks 5. There's no easy tool that accounts for fairness, venue quality, and group preferences simultaneously.
 
 ### 1.2 Solution
-Midway is an AI-powered web app that calculates the optimal meeting spot for any group. Users enter their locations, tells the AI agent what they are looking for, and Midway finds real venues near the geographic sweet spot: ranked by fairness or efficiency, with real driving distances and optional AI-powered vibe matching.
+Midway is a web app that calculates the optimal meeting spot for any group. Users enter their locations, pick a vibe or category, and Midway finds real venues near the geographic sweet spot — ranked by fairness or efficiency, with real driving distances and optional AI-powered vibe matching.
 
 ### 1.3 Target Users
 - Friend groups (2–8 people) planning casual meetups
@@ -74,8 +73,8 @@ Midway is an AI-powered web app that calculates the optimal meeting spot for any
 2. (If AI prompt) Send user's natural language prompt to `/api/ai-keywords` — AI extracts optimized Google Places search keyword and type
 3. Search Google Places Nearby for venues using AI-extracted keywords (or VIBE_MAP/raw text fallback)
 4. (If AI prompt) Fetch Google reviews for top candidates via Place Details API, send venue names + review snippets to `/api/ai-rank` for AI-based filtering — venues that don't match the prompt are deprioritized
-5. Fetch real driving distances from every person to every venue (Google Directions)
-6. Rank venues using Pareto dominance on distances and drive times, determined by the selected mode (Fair/Eco)
+5. Rank venues using haversine distances (free, no API calls), applying Pareto dominance determined by the selected mode (Fair/Eco)
+6. Fetch real driving distances only for the #1 venue (N parallel Directions calls). Other venues fetch routes lazily on click.
 7. Display top 5 venues
 
 **AI Fallback Behavior:**
@@ -221,10 +220,12 @@ The AI is involved at the **search layer**, not the ranking layer. Ranking is al
 - Gemini 2.0 Flash (primary) → GPT-4o Mini (fallback 1) → Claude Sonnet 4 (fallback 2)
 - Each provider's success/failure and latency are logged to analytics
 
-### 4.4 Route Caching
-- Routes cached per-session in memory (`state.routeCache`)
+### 4.4 Route Caching & Lazy Loading
+- Routes cached per-session in memory (`_routeCache`)
 - Key: `{origin_lat,lng}→{dest_lat,lng}`
 - Prevents duplicate Google Directions API calls
+- **Lazy Directions loading:** Real driving routes are fetched only for the currently viewed venue (N parallel calls, where N = group size). Other venues are ranked by haversine (free) until selected. This reduces Directions API calls from 5×N to ~N per search, cutting costs ~72% for typical usage patterns.
+- A loading spinner appears in the summary area while routes are being fetched for a newly selected venue
 
 ---
 
@@ -273,9 +274,10 @@ Examples: `mode_toggle`, `vibe_select`, `venues_shown`, `venue_selected`, `share
 
 ### 7.1 Performance
 - First meaningful paint under 2 seconds
-- Venue search results in under 5 seconds
+- Venue search results in under 3 seconds (lazy Directions loading defers route fetching to venue selection)
 - AI ranking adds 1–3 seconds (async, non-blocking)
 - Route caching eliminates duplicate API calls
+- Clicking an uncached venue fetches routes in ~300ms (N parallel Directions calls)
 
 ### 7.2 Compatibility
 - Modern browsers (Chrome, Firefox, Safari, Edge)

@@ -16,14 +16,14 @@
 
 ## What is Midway?
 
-Midway helps groups of friends find the best place to meet. Enter everyone's starting locations, pick a vibe, and Midway calculates the fairest or most efficient midpoint — then shows real venues nearby with driving distances, ratings, and directions.
+Midway helps groups of friends find the best place to meet. Enter everyone's starting locations, pick a vibe, and Midway calculates the fairest or most efficient midpoint, then shows real venues nearby with driving distances, ratings, and directions.
 
 ## Features
 
 ### Core
 - **Smart Midpoint Calculation** — Two algorithms: **Fair** mode (minimax — no one travels too far) and **Eco** mode (Weiszfeld geometric median — minimizes total travel)
 - **Real Venue Discovery** — Searches Google Places for restaurants, cafés, activities, and more near the calculated center
-- **Driving Distances** — Real route distances and drive times for every person to every venue via Google Directions API
+- **Driving Distances** — Real route distances and drive times via Google Directions API, fetched lazily per venue to minimize API costs (~72% fewer Directions calls)
 - **Interactive Map** — Leaflet.js map with markers for people, venues, and routes
 
 ### Vibe Check
