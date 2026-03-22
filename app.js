@@ -1022,7 +1022,7 @@ function findSweetSpot() {
     // Step 2.5: If AI prompt, fetch Google reviews and let AI filter by review content
     var venues = rankVenuesByMode(venues_raw);
     if (isFreeTextPrompt && venues.length > 0) {
-      showResultsLoading('Reading reviews to match your vibe...');
+      showResultsLoading('AI is reading reviews...');
       await fetchVenueReviews(venues);
       try {
         venues = await aiFilterByReviews(aiPromptText, venues);
@@ -1034,7 +1034,7 @@ function findSweetSpot() {
     // Step 3: Fetch real driving distances for top 5 venues (cached per origin/dest pair).
     venues = rankVenuesByMode(venues); // re-rank after possible AI filtering
     const top5 = venues.slice(0, 5);
-    showResultsLoading('Calculating real driving routes...');
+    showResultsLoading('Checking real driving routes...');
     await fetchAllVenueDistances(top5);
 
     // Step 4: Re-rank top 5 with real distances, append the rest (eco/fair mode only)
@@ -1741,10 +1741,10 @@ function renderVenueList() {
       </div>
       <div class="venue-actions">
         ${v.placeId
-          ? '<button class="btn-tiny book" onclick="event.stopPropagation(); openGoogleMapsPlace(\'' + v.placeId + '\')">View</button>'
-          : '<button class="btn-tiny book" onclick="event.stopPropagation(); bookVenue(\'' + encodeURIComponent(v.name) + '\')">Search</button>'
+          ? '<button class="btn-tiny" onclick="event.stopPropagation(); openGoogleMapsPlace(\'' + v.placeId + '\')">View</button>'
+          : '<button class="btn-tiny" onclick="event.stopPropagation(); bookVenue(\'' + encodeURIComponent(v.name) + '\')">Search</button>'
         }
-        <button class="btn-tiny" onclick="event.stopPropagation(); selectVenue(${v.id}); showShareModal()"><i class="fa-solid fa-share-nodes"></i> Share</button>
+        <button class="btn-tiny book" onclick="event.stopPropagation(); selectVenue(${v.id}); showShareModal()"><i class="fa-solid fa-share-nodes"></i> Share</button>
       </div>
     </div>
   `).join('');
@@ -2221,7 +2221,7 @@ function _populateShareCard(v, placeDetail) {
       <div class="fc-hero-info">
         <div class="fc-venue-name">${escapeHtml(v.name)}</div>
         <div class="venue-actions fc-hero-actions">
-          ${v.placeId ? '<button class="btn-tiny book" onclick="event.stopPropagation(); openGoogleMapsPlace(\'' + v.placeId + '\')">View</button>' : ''}
+          ${v.placeId ? '<button class="btn-tiny" onclick="event.stopPropagation(); openGoogleMapsPlace(\'' + v.placeId + '\')">View</button>' : ''}
           <button class="btn-tiny" onclick="event.stopPropagation(); getDirections(${v.lat}, ${v.lng})"><i class="fa-solid fa-diamond-turn-right"></i> Directions</button>
         </div>
       </div>

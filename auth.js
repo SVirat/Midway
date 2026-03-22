@@ -653,7 +653,7 @@ async function showFavoriteVenues() {
         <div class="sp-card-detail">${escapeHtml(f.address || '')}</div>
       </div>
       <div class="sp-card-actions">
-        ${f.place_id ? '<button class="btn-tiny book" onclick="openGoogleMapsPlace(\'' + f.place_id + '\')" title="View">View</button>' : ''}
+        ${f.place_id ? '<button class="btn-tiny" onclick="openGoogleMapsPlace(\'' + f.place_id + '\')" title="View">View</button>' : ''}
         <button class="btn-tiny danger" onclick="removeFavAndRefresh(${f.id})" title="Remove">
           <i class="fa-solid fa-trash"></i>
         </button>
