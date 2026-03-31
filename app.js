@@ -327,6 +327,19 @@ document.getElementById('modeToggle').addEventListener('change', function () {
 let locationCounter = 0;
 
 function addLocationInput(placeholder, showGeoBtn) {
+  // Enforce group size limit: 4 free, 12 pro
+  const maxLocations = (typeof isProUser === 'function' && isProUser()) ? 12 : 4;
+  const currentCount = document.getElementById('locationsList').children.length;
+  if (currentCount >= maxLocations) {
+    if (typeof isProUser === 'function' && !isProUser()) {
+      showToast('Free plan supports up to 4 friends. Upgrade to Pro for 12!');
+      if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    } else {
+      showToast('Maximum of ' + maxLocations + ' locations reached.');
+    }
+    return;
+  }
+
   locationCounter++;
   const id = locationCounter;
   const idx = document.getElementById('locationsList').children.length;
@@ -1079,7 +1092,8 @@ function findSweetSpot() {
     venues.forEach((v, idx) => { v.id = idx + 1; });
 
     state._allVenues = venues;
-    state.results = venues.slice(0, 5);
+    const venueLimit = (typeof isProUser === 'function' && isProUser()) ? 10 : 5;
+    state.results = venues.slice(0, venueLimit);
     state.chosenVenue = state.results[0] || null;
     state._resultsLocationCount = state.locations.length;
 
@@ -1868,6 +1882,12 @@ function sortVenues(mode) {
 }
 
 async function loadMoreOptions() {
+  // Pro-only feature
+  if (typeof isProUser === 'function' && !isProUser()) {
+    showToast('Upgrade to Pro for more venue options!');
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    return;
+  }
   trackEvent('find_more_click', { currentCount: state.results.length });
   const more = state._allVenues.slice(0, 10);
   if (more.length <= state.results.length) return;
@@ -2297,8 +2317,8 @@ function _populateShareCard(v, placeDetail) {
 
   card.innerHTML = `
     <div class="fc-hero">
-      <div class="fc-photo" style="${photoUrl ? 'background-image:url(' + photoUrl + ')' : 'background:' + (FALLBACK_COLORS[v.icon] || '#6366F1')}">
-        ${photoUrl ? '' : '<i class="fa-solid ' + v.icon + '"></i>'}
+      <div class="fc-photo" style="${photoUrl ? '' : 'background:' + (FALLBACK_COLORS[v.icon] || '#6366F1')}">
+        ${photoUrl ? '<img src="' + photoUrl.replace(/"/g, '&quot;') + '" alt="" referrerpolicy="no-referrer" class="fc-photo-img" />' : '<i class="fa-solid ' + v.icon + '"></i>'}
       </div>
       <div class="fc-hero-info">
         <div class="fc-venue-name">${escapeHtml(v.name)}</div>
@@ -3006,17 +3026,6 @@ document.addEventListener('DOMContentLoaded', function() {
   if (typeof CONFIG !== 'undefined' && CONFIG.TEST_MODE) {
     var btn = document.getElementById('testModeBtn');
     if (btn) btn.style.display = '';
-  }
-
-  // Set support link from config
-  if (typeof CONFIG !== 'undefined' && CONFIG.RAZORPAY_SUPPORT_URL) {
-    var supportLink = document.getElementById('supportLink');
-    if (supportLink) {
-      supportLink.href = CONFIG.RAZORPAY_SUPPORT_URL;
-      supportLink.addEventListener('click', function() {
-        trackEvent('support_link_click', { url: CONFIG.RAZORPAY_SUPPORT_URL });
-      });
-    }
   }
 
   // Global Enter key triggers Find the Midway (unless in a location autocomplete input)

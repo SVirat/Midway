@@ -318,3 +318,37 @@ create index if not exists idx_groups_created_at on public.groups(created_at);
 create index if not exists idx_shared_sessions_created_at on public.shared_sessions(created_at);
 create index if not exists idx_session_metrics_anon on public.session_metrics(anon_id);
 create index if not exists idx_session_metrics_user on public.session_metrics(user_id);
+
+-- ============================================
+-- 12. Subscriptions (Razorpay payment tracking)
+-- ============================================
+create table if not exists public.subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  plan text not null check (plan in ('monthly', 'yearly')),
+  status text not null default 'active' check (status in ('active', 'cancelled', 'expired')),
+  razorpay_payment_id text,
+  razorpay_subscription_id text,
+  amount integer not null,
+  currency text not null default 'INR',
+  started_at timestamptz default now(),
+  expires_at timestamptz not null,
+  created_at timestamptz default now()
+);
+
+alter table public.subscriptions enable row level security;
+
+do $$ begin
+  if not exists (select 1 from pg_policies where policyname = 'Users read own subscriptions' and tablename = 'subscriptions') then
+    create policy "Users read own subscriptions" on public.subscriptions for select using (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Users insert own subscriptions' and tablename = 'subscriptions') then
+    create policy "Users insert own subscriptions" on public.subscriptions for insert with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Users update own subscriptions' and tablename = 'subscriptions') then
+    create policy "Users update own subscriptions" on public.subscriptions for update using (auth.uid() = user_id);
+  end if;
+end $$;
+
+create index if not exists idx_subscriptions_user on public.subscriptions(user_id, status);
+create index if not exists idx_subscriptions_expires on public.subscriptions(expires_at);

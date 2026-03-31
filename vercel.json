@@ -4,6 +4,10 @@
   "rewrites": [
     { "source": "/api/ai-rank", "destination": "/api/ai-rank" },
     { "source": "/api/ai-keywords", "destination": "/api/ai-keywords" },
-    { "source": "/api/resolve-map-link", "destination": "/api/resolve-map-link" }
+    { "source": "/api/resolve-map-link", "destination": "/api/resolve-map-link" },
+    { "source": "/api/create-subscription", "destination": "/api/create-order" },
+    { "source": "/api/verify-payment", "destination": "/api/verify-payment" },
+    { "source": "/api/razorpay-webhook", "destination": "/api/razorpay-webhook" },
+    { "source": "/api/cancel-subscription", "destination": "/api/cancel-subscription" }
   ]
 }

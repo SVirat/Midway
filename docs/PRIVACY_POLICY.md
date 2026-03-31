@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Effective Date:** March 21, 2026  
-**Last Updated:** March 21, 2026  
+**Last Updated:** March 31, 2026  
 **App:** Midway  
 **URL:** https://mway.vercel.app  
 **Developer:** Virat Singh
@@ -26,6 +26,7 @@ We are committed to protecting your privacy. We do not sell your data, we do not
 | **Geolocation coordinates** | When you click "Use my location" (opt-in only) | To auto-fill your starting location |
 | **Vibe preferences** | When you select category tags or type an AI prompt | To filter and rank venue results |
 | **Google account info** | When you sign in with Google | To save your locations and enable AI features |
+| **Subscription choice** | When you subscribe to Pro | To activate your subscription and manage billing |
 
 ### 2.2 Data We Collect Automatically
 
@@ -42,7 +43,7 @@ We are committed to protecting your privacy. We do not sell your data, we do not
 - We do **not** use cookies for tracking
 - We do **not** fingerprint your device
 - We do **not** record your browsing history outside the app
-- We do **not** collect payment information (support donations are handled entirely by Razorpay)
+- We do **not** collect or store payment card details (all payment processing is handled entirely by Razorpay; we only receive subscription IDs and payment confirmation tokens)
 - We do **not** access your Google contacts, calendar, or any data beyond your basic profile
 
 ---
@@ -55,6 +56,7 @@ We are committed to protecting your privacy. We do not sell your data, we do not
 | Find and rank venues | Addresses, vibe preferences, AI prompts |
 | Display weather | Midpoint coordinates (passed to Open-Meteo, a free weather API) |
 | Authenticate you | Google OAuth token, profile name/email/photo |
+| Manage your subscription | Subscription plan choice, Razorpay subscription/payment IDs (no card details) |
 | Save your locations | Addresses (only if signed in) |
 | Improve the app | Aggregated analytics, session metrics, error logs |
 | AI venue ranking | Your vibe prompt text is sent to our server, then to AI providers. The prompt contains venue names and your description — no personal information. |
@@ -75,6 +77,7 @@ We use the following third-party services. Each has its own privacy policy:
 | **Anthropic API** | AI prompts (fallback provider) | [Anthropic Privacy Policy](https://www.anthropic.com/privacy) |
 | **Open-Meteo** | Midpoint coordinates (for weather data) | [Open-Meteo Terms](https://open-meteo.com/en/terms) |
 | **Vercel** | Hosts the app; standard web server logs (IP, user agent) | [Vercel Privacy Policy](https://vercel.com/legal/privacy-policy) |
+| **Razorpay** | Subscription plan choice, payment confirmation IDs (Razorpay handles all card/UPI data directly; we never see or store payment credentials) | [Razorpay Privacy Policy](https://razorpay.com/privacy/) |
 
 ---
 
@@ -84,6 +87,7 @@ We use the following third-party services. Each has its own privacy policy:
 - **Anonymous data:** Analytics events are associated with a random anonymous ID stored in your browser's localStorage. This ID is not linked to your real identity unless you sign in.
 - **Location precision:** When your coordinates appear in analytics, they are rounded to approximately 1 km precision.
 - **API keys:** Sensitive API keys (AI providers) are stored server-side and never exposed to your browser.
+- **Payments:** All payment processing is handled by Razorpay. We never receive, transmit, or store your card number, UPI ID, or bank details. We only store Razorpay subscription IDs and payment confirmation tokens to manage your subscription status.
 - **Encryption:** All data in transit is encrypted via HTTPS/TLS.
 
 ---
@@ -97,6 +101,7 @@ We use the following third-party services. Each has its own privacy policy:
 | Client error logs | Retained indefinitely |
 | Saved locations | Until you delete them or your account |
 | Search history | Retained indefinitely (associated with your user ID if signed in) |
+| Subscription records | Retained for the duration of the subscription and a reasonable period after cancellation for billing dispute resolution |
 
 ---
 

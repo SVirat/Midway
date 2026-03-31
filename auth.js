@@ -151,7 +151,19 @@ function onSignedIn(user) {
     broadcastMyPresence();
   }
 
+  // Fetch subscription status and update upgrade button + pro badge
+  fetchUserSubscription().then(function() {
+    updateUpgradeButton();
+    updateProBadge();
+    updateManageSubItem();
 
+    // If user was trying to upgrade before sign-in, auto-open the flow
+    var pendingUpgrade = false;
+    try { pendingUpgrade = sessionStorage.getItem('_pendingUpgrade') === '1'; sessionStorage.removeItem('_pendingUpgrade'); } catch(e) {}
+    if (pendingUpgrade) {
+      setTimeout(function() { showUpgradeModal(); }, 500);
+    }
+  });
 
   // Log sign-in event
   logActivity('sign_in', { provider: 'google' });
@@ -183,7 +195,11 @@ function onSignedOut() {
     }
   }
 
-
+  // Reset subscription state
+  _userSubscription = null;
+  updateUpgradeButton();
+  updateProBadge();
+  updateManageSubItem();
 }
 
 function toggleUserDropdown() {
@@ -736,4 +752,285 @@ async function toggleVenueFavorite(venueId, btn) {
     btn.classList.add('fav-active');
     showToast('Added to favorites!');
   }
+}
+
+// ============================================
+// Subscription / Upgrade Logic
+// ============================================
+let _userSubscription = null; // cached active subscription
+
+function isProUser() {
+  if (currentUser && currentUser.email === 'svirat@gmail.com') return true;
+  return !!(_userSubscription && (_userSubscription.status === 'active' || _userSubscription.status === 'cancelled') && new Date(_userSubscription.expires_at) > new Date());
+}
+
+async function fetchUserSubscription() {
+  if (!_supabaseClient || !currentUser) { _userSubscription = null; return null; }
+  const { data, error } = await _supabaseClient
+    .from('subscriptions')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .in('status', ['active', 'cancelled'])
+    .gte('expires_at', new Date().toISOString())
+    .order('expires_at', { ascending: false })
+    .limit(1);
+  if (error) { console.warn('Subscription fetch error:', error.message); _userSubscription = null; return null; }
+  _userSubscription = (data && data[0]) || null;
+  return _userSubscription;
+}
+
+async function saveSubscription(plan, paymentId, subscriptionId) {
+  if (!_supabaseClient || !currentUser) return;
+  const amount = plan === 'yearly' ? 999 : 99;
+  const now = new Date();
+  const expiresAt = new Date(now);
+  if (plan === 'yearly') {
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+  } else {
+    expiresAt.setMonth(expiresAt.getMonth() + 1);
+  }
+  const { error } = await _supabaseClient.from('subscriptions').insert({
+    user_id: currentUser.id,
+    plan: plan,
+    status: 'active',
+    razorpay_payment_id: paymentId || null,
+    razorpay_subscription_id: subscriptionId || null,
+    amount: amount,
+    currency: 'INR',
+    started_at: now.toISOString(),
+    expires_at: expiresAt.toISOString(),
+  });
+  if (error) { console.error('Subscription save error:', error); return; }
+  await fetchUserSubscription();
+  updateUpgradeButton();
+  trackEvent('subscription_created', { plan, amount });
+}
+
+function updateUpgradeButton() {
+  var btn = document.getElementById('upgradeBtn');
+  if (!btn) return;
+  if (isProUser()) {
+    btn.innerHTML = '<i class="fa-solid fa-crown"></i> Pro';
+    btn.classList.add('is-pro');
+  } else {
+    btn.innerHTML = '<i class="fa-solid fa-gem"></i> Upgrade';
+    btn.classList.remove('is-pro');
+  }
+}
+
+function updateProBadge() {
+  var show = isProUser();
+  var avatarBadge = document.getElementById('proBadgeAvatar');
+  var dropdownBadge = document.getElementById('proBadgeDropdown');
+  if (avatarBadge) avatarBadge.style.display = show ? '' : 'none';
+  if (dropdownBadge) dropdownBadge.style.display = show ? 'inline' : 'none';
+}
+
+// ---------- Upgrade Modal ----------
+function showUpgradeModal() {
+  if (isProUser()) {
+    showToast('You are already a Pro user!');
+    return;
+  }
+  document.getElementById('upgradeModal').classList.add('visible');
+  // Reset toggle to monthly
+  document.getElementById('planToggle').checked = false;
+  onPlanToggle();
+}
+
+function hideUpgradeModal(e) {
+  if (e && e.target && e.target.id !== 'upgradeModal') return;
+  document.getElementById('upgradeModal').classList.remove('visible');
+}
+
+function onPlanToggle() {
+  var isYearly = document.getElementById('planToggle').checked;
+  var priceEl = document.getElementById('upgradePrice');
+  var monthlyLabel = document.getElementById('planLabelMonthly');
+  var yearlyLabel = document.getElementById('planLabelYearly');
+  if (isYearly) {
+    priceEl.innerHTML = '<span class="price-amount">₹999</span><span class="price-period">/year</span>';
+    monthlyLabel.classList.remove('active');
+    yearlyLabel.classList.add('active');
+  } else {
+    priceEl.innerHTML = '<span class="price-amount">₹99</span><span class="price-period">/month</span>';
+    monthlyLabel.classList.add('active');
+    yearlyLabel.classList.remove('active');
+  }
+}
+
+function startUpgradeFlow() {
+  // Must be signed in
+  if (!currentUser) {
+    hideUpgradeModal();
+    showToast('Please sign in to upgrade.');
+    try { sessionStorage.setItem('_pendingUpgrade', '1'); } catch(e) {}
+    signInWithGoogle();
+    return;
+  }
+
+  if (currentUser.email === 'svirat@gmail.com') {
+    hideUpgradeModal();
+    showToast('Pro activated!');
+    return;
+  }
+
+  var isYearly = document.getElementById('planToggle').checked;
+  var plan = isYearly ? 'yearly' : 'monthly';
+
+  // Disable button while creating subscription
+  var ctaBtn = document.getElementById('upgradeCta');
+  if (ctaBtn) { ctaBtn.disabled = true; ctaBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...'; }
+
+  // Step 1: Create a Razorpay subscription on the server
+  fetch('/api/create-subscription', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan: plan, user_id: currentUser.id }),
+  })
+  .then(function(resp) { return resp.json(); })
+  .then(function(data) {
+    if (!data.subscription_id) {
+      showToast(data.error || 'Could not create subscription.');
+      if (ctaBtn) { ctaBtn.disabled = false; ctaBtn.innerHTML = '<i class="fa-solid fa-gem"></i> Upgrade Now'; }
+      return;
+    }
+
+    // Step 2: Open Razorpay Checkout modal with subscription
+    var options = {
+      key: data.key_id,
+      subscription_id: data.subscription_id,
+      name: 'Midway Pro',
+      description: plan === 'yearly' ? 'Yearly Plan — ₹999/year' : 'Monthly Plan — ₹99/month',
+      handler: function(response) {
+        // Step 3: Verify payment server-side
+        _verifyRazorpayPayment(response.razorpay_subscription_id, response.razorpay_payment_id, response.razorpay_signature, plan);
+      },
+      prefill: {
+        name: (currentUser.user_metadata || {}).full_name || '',
+        email: currentUser.email || '',
+      },
+      theme: { color: '#F59E0B' },
+      modal: {
+        ondismiss: function() {
+          if (ctaBtn) { ctaBtn.disabled = false; ctaBtn.innerHTML = '<i class="fa-solid fa-gem"></i> Upgrade Now'; }
+        },
+      },
+    };
+
+    var rzp = new Razorpay(options);
+    rzp.on('payment.failed', function(response) {
+      showToast('Payment failed: ' + (response.error.description || 'Please try again.'));
+      if (ctaBtn) { ctaBtn.disabled = false; ctaBtn.innerHTML = '<i class="fa-solid fa-gem"></i> Upgrade Now'; }
+    });
+    rzp.open();
+    hideUpgradeModal();
+  })
+  .catch(function(err) {
+    console.error('Create subscription error:', err);
+    showToast('Could not initiate payment. Please try again.');
+    if (ctaBtn) { ctaBtn.disabled = false; ctaBtn.innerHTML = '<i class="fa-solid fa-gem"></i> Upgrade Now'; }
+  });
+}
+
+async function _verifyRazorpayPayment(subscriptionId, paymentId, signature, plan) {
+  showToast('Verifying payment...');
+  try {
+    var resp = await fetch('/api/verify-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        razorpay_subscription_id: subscriptionId,
+        razorpay_payment_id: paymentId,
+        razorpay_signature: signature,
+      }),
+    });
+    var data = await resp.json();
+    if (data.verified) {
+      await saveSubscription(plan, paymentId, subscriptionId);
+      showToast('Pro plan activated! Enjoy Midway Pro.');
+    } else {
+      showToast('Payment verification failed: ' + (data.error || 'Invalid signature'));
+    }
+  } catch (e) {
+    console.error('Payment verification error:', e);
+    showToast('Could not verify payment. Please contact support.');
+  }
+  var ctaBtn = document.getElementById('upgradeCta');
+  if (ctaBtn) { ctaBtn.disabled = false; ctaBtn.innerHTML = '<i class="fa-solid fa-gem"></i> Upgrade Now'; }
+}
+
+// ---------- Manage / Cancel Subscription ----------
+function updateManageSubItem() {
+  var item = document.getElementById('manageSubItem');
+  if (!item) return;
+  item.style.display = isProUser() ? '' : 'none';
+}
+
+function showCancelSubConfirm() {
+  closeUserDropdown();
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay visible';
+  overlay.id = 'cancelSubModal';
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+  var plan = _userSubscription ? _userSubscription.plan : '';
+  var expiresDate = _userSubscription && _userSubscription.expires_at ? new Date(_userSubscription.expires_at) : null;
+  var expires = expiresDate && !isNaN(expiresDate) ? expiresDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'the end of your billing cycle';
+
+  overlay.innerHTML = '<div class="modal payment-confirm-modal" onclick="event.stopPropagation()">' +
+    '<button class="modal-close" onclick="document.getElementById(\'cancelSubModal\').remove()"><i class="fa-solid fa-xmark"></i></button>' +
+    '<div style="text-align:center;padding:8px 0 16px">' +
+    '<i class="fa-solid fa-circle-exclamation" style="font-size:2.5rem;color:var(--warning)"></i>' +
+    '<h3 style="margin:12px 0 8px">Cancel Subscription?</h3>' +
+    '<p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:6px">Your <strong>' + plan + '</strong> Pro plan will remain active until <strong>' + expires + '</strong>.</p>' +
+    '<p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:20px">After that, you\'ll switch back to the free plan.</p>' +
+    '<div style="display:flex;gap:8px;justify-content:center">' +
+    '<button class="btn btn-outline" onclick="document.getElementById(\'cancelSubModal\').remove()">Keep Plan</button>' +
+    '<button class="btn btn-primary" style="background:var(--danger)" onclick="confirmCancelSubscription()">Cancel Subscription</button>' +
+    '</div></div></div>';
+  document.body.appendChild(overlay);
+}
+
+async function confirmCancelSubscription() {
+  var modal = document.getElementById('cancelSubModal');
+  if (modal) modal.remove();
+
+  if (!_supabaseClient || !currentUser || !_userSubscription) return;
+
+  // Call server to cancel on Razorpay (stops future renewals)
+  try {
+    var session = (await _supabaseClient.auth.getSession()).data.session;
+    var resp = await fetch('/api/cancel-subscription', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (session ? session.access_token : ''),
+      },
+      body: JSON.stringify({ razorpay_subscription_id: _userSubscription.razorpay_subscription_id }),
+    });
+    var data = await resp.json();
+    if (!resp.ok) {
+      showToast(data.error || 'Failed to cancel. Please try again.');
+      return;
+    }
+  } catch (e) {
+    console.error('Cancel subscription error:', e);
+    showToast('Failed to cancel. Please try again.');
+    return;
+  }
+
+  // Update local DB status
+  await _supabaseClient
+    .from('subscriptions')
+    .update({ status: 'cancelled' })
+    .eq('id', _userSubscription.id)
+    .eq('user_id', currentUser.id);
+
+  _userSubscription.status = 'cancelled';
+  updateUpgradeButton();
+  updateProBadge();
+  updateManageSubItem();
+  showToast('Subscription cancelled. Pro access remains until ' + new Date(_userSubscription.expires_at).toLocaleDateString() + '.');
+  trackEvent('subscription_cancelled', { plan: _userSubscription.plan });
 }

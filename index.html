@@ -25,11 +25,9 @@
         <i class="fa-solid fa-share-nodes"></i> Share
       </button>
       <!-- Upgrade -->
-       <!--
       <button class="btn btn-sm btn-upgrade" id="upgradeBtn" onclick="showUpgradeModal()">
-        <i class="fa-solid fa-bolt"></i> Upgrade
+        <i class="fa-solid fa-gem"></i> Upgrade
       </button>
-      -->
       <!-- Auth -->
       <div class="auth-area" id="authArea">
         <button class="btn btn-sm btn-google-signin" id="googleSignInBtn" onclick="signInWithGoogle()">
@@ -43,11 +41,14 @@
             <div class="user-dropdown-header">
               <img id="dropdownAvatar" src="" alt="" />
               <div>
-                <div class="user-dropdown-name" id="dropdownName"></div>
+                <div class="user-dropdown-name" id="dropdownName"><span class="pro-badge-inline" id="proBadgeDropdown" style="display:none">PRO</span></div>
                 <div class="user-dropdown-email" id="dropdownEmail"></div>
               </div>
             </div>
             <div class="user-dropdown-divider"></div>
+            <button class="user-dropdown-item manage-sub" id="manageSubItem" onclick="showCancelSubConfirm()" style="display:none">
+              <i class="fa-solid fa-credit-card"></i> Manage Subscription
+            </button>
             <button class="user-dropdown-item signout" onclick="signOutUser()">
               <i class="fa-solid fa-right-from-bracket"></i> Sign Out
             </button>
@@ -254,16 +255,15 @@
 
   <!-- ============ FOOTER ============ -->
   <footer class="site-footer">
-    Made with <span class="heart">&#10084;&#65039;</span> in Hyderabad. <!-- <a id="supportLink" href="#" target="_blank" rel="noopener noreferrer">Support the developer</a>. -->
+    Made with <span class="heart">&#10084;&#65039;</span> in Hyderabad. <a href="https://github.com/SVirat/Midway" target="_blank" rel="noopener noreferrer">We're open source.</a>
   </footer>
 
   <!-- ============ UPGRADE MODAL ============ -->
   <div class="modal-overlay" id="upgradeModal" onclick="hideUpgradeModal(event)">
     <div class="modal upgrade-modal" onclick="event.stopPropagation()">
       <button class="modal-close" onclick="hideUpgradeModal()"><i class="fa-solid fa-xmark"></i></button>
-      <div class="upgrade-badge"><i class="fa-solid fa-crown"></i> PRO</div>
       <h3 class="upgrade-title">Upgrade to <span class="gradient-text">Midway Pro</span></h3>
-      <p class="upgrade-subtitle">Unlock the full potential of your meetups</p>
+      <p class="upgrade-subtitle">Plan the best meetups possible.</p>
 
       <!-- Plan Toggle -->
       <div class="plan-toggle-wrapper">
@@ -283,14 +283,14 @@
 
       <!-- Benefits -->
       <ul class="upgrade-benefits">
-        <li><i class="fa-solid fa-users"></i> <strong>2x</strong> as many friends in a group</li>
-        <li><i class="fa-solid fa-map-location-dot"></i> <strong>2x</strong> as many results provided</li>
-        <li><i class="fa-solid fa-wand-magic-sparkles"></i> <strong>4x</strong> better AI results</li>
+        <li><i class="fa-solid fa-users"></i> <strong>3x</strong> friend group size</li>
+        <li><i class="fa-solid fa-map-location-dot"></i> <strong>2x</strong> venue recommendations</li>
+        <li><i class="fa-solid fa-wand-magic-sparkles"></i> Priority AI-powered results</li>
       </ul>
 
       <!-- CTA -->
       <button class="btn btn-primary btn-lg upgrade-cta" id="upgradeCta" onclick="startUpgradeFlow()">
-        <i class="fa-solid fa-bolt"></i> Upgrade Now
+        <i class="fa-solid fa-gem"></i> Upgrade Now
       </button>
       <p class="upgrade-fine-print">Secure payment. Cancel anytime.</p>
     </div>

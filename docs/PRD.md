@@ -1,7 +1,7 @@
 # Midway: Product Requirements Document
 
-**Version:** 1.0  
-**Last Updated:** March 22, 2026  
+**Version:** 1.1  
+**Last Updated:** March 31, 2026  
 **Author:** Virat Singh  
 **Live URL:** https://mway.vercel.app
 
@@ -16,7 +16,7 @@ When a group of friends wants to meet, choosing a location is surprisingly hard.
 Midway is a web app that calculates the optimal meeting spot for any group. Users enter their locations, pick a vibe or category, and Midway finds real venues near the geographic sweet spot — ranked by fairness or efficiency, with real driving distances and optional AI-powered vibe matching.
 
 ### 1.3 Target Users
-- Friend groups (2–8 people) planning casual meetups
+- Friend groups (2–12 people) planning casual meetups
 - Couples deciding on date-night spots
 - Remote teams meeting in-person occasionally
 - Anyone coordinating group outings (food, activities, events)
@@ -36,7 +36,7 @@ Midway is a web app that calculates the optimal meeting spot for any group. User
 
 **Behavior:**
 - Minimum 2 locations required to search
-- Up to 8 location inputs supported
+- Up to 4 location inputs on Free plan, up to 12 on Pro plan
 - Each input has a label field (person's name) and address field
 - GPS button shows a loading spinner while acquiring location
 - "Add Person" button to add more input rows
@@ -173,16 +173,47 @@ Each venue card provides:
 - User menu dropdown (name, email, sign out)
 - Unlocks: saved locations, profile sync across sessions
 
-### 3.2 Feature Gating
-| Feature | Signed Out | Signed In |
-|---------|-----------|----------|
-| Location input | ✅ | ✅ |
-| Category/vibe tags | ✅ | ✅ |
-| AI custom prompt | ✅ | ✅ |
-| Search venues | ✅ | ✅ |
-| Load more options | ✅ | ✅ |
-| Share | ✅ | ✅ |
-| Saved locations | 🔒 | ✅ |
+### 3.2 Pro Subscription
+**Description:** Midway offers a paid Pro tier via Razorpay recurring subscriptions.
+
+**Plans:**
+| Plan | Price | Billing |
+|------|-------|---------|
+| Monthly | ₹99/month | Recurring, cancel anytime |
+| Yearly | ₹999/year | Recurring, cancel anytime |
+
+**Pro Benefits:**
+| Feature | Free | Pro |
+|---------|------|-----|
+| Group size | 4 friends | 12 friends (3x) |
+| Venue results | 5 | 10 (2x) |
+| PRO badge | — | Shown next to name |
+
+**Payment Flow:**
+1. User clicks "Upgrade" button (or hits group size / venue limit)
+2. If not signed in, redirected to Google sign-in first; upgrade modal opens automatically after sign-in
+3. Upgrade modal shows plan toggle (monthly/yearly) and benefits list
+4. User clicks "Upgrade Now" → Razorpay Subscription created server-side → Checkout.js modal opens
+5. After payment, HMAC-SHA256 signature verified server-side (`payment_id|subscription_id`)
+6. Subscription saved in `subscriptions` table
+7. Razorpay webhook provides backup confirmation for all subscription lifecycle events
+
+**Cancellation:**
+- Users can cancel from the "Manage Subscription" dropdown item
+- Calls Razorpay API with `cancel_at_cycle_end: 1` (access continues until billing period ends)
+- After expiry, user reverts to free tier
+
+### 3.3 Feature Gating
+| Feature | Signed Out | Signed In (Free) | Signed In (Pro) |
+|---------|-----------|----------|----------|
+| Location input | ✅ (up to 4) | ✅ (up to 4) | ✅ (up to 12) |
+| Category/vibe tags | ✅ | ✅ | ✅ |
+| AI custom prompt | ✅ | ✅ | ✅ |
+| Search venues | ✅ (5 results) | ✅ (5 results) | ✅ (10 results) |
+| Load more options | ✅ | ✅ | ✅ |
+| Share | ✅ | ✅ | ✅ |
+| Saved locations | 🔒 | ✅ | ✅ |
+| PRO badge | — | — | ✅ |
 
 ---
 
@@ -245,6 +276,7 @@ The AI is involved at the **search layer**, not the ranking layer. Ranking is al
 | `client_logs` | Frontend console errors + unhandled exceptions | Insert-only |
 | `session_metrics` | Session duration, time-to-first-action | Upsert by session_id |
 | `groups` | Real-time group session codes with auto-expiry | Insert/select: anyone; delete: expired only |
+| `subscriptions` | Pro subscription records (plan, status, Razorpay IDs, expiry) | User-only read; service role for webhook writes |
 
 ### 5.2 Anonymous User Tracking
 - `midway_anon_id` stored in localStorage (UUID)
@@ -267,6 +299,8 @@ Examples: `mode_toggle`, `vibe_select`, `venues_shown`, `venue_selected`, `share
 | Open-Meteo | Weather at midpoint | None (free) |
 | OSM Nominatim | Fallback reverse geocoding | None (free) |
 | Supabase | Auth + Database + Realtime Presence | Anon key |
+| Razorpay Subscriptions API | Recurring billing, subscription management | Key ID + Secret |
+| Razorpay Checkout.js | Client-side payment modal | Key ID |
 
 ---
 
@@ -330,3 +364,4 @@ Examples: `mode_toggle`, `vibe_select`, `venues_shown`, `venue_selected`, `share
 - [ ] Push notifications when friends join a session
 - [ ] Custom domain (midw.ai)
 - [ ] Mobile app (PWA)
+- [ ] Family/team plans (shared Pro subscription)
