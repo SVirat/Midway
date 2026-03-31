@@ -84,6 +84,10 @@ Midway helps groups of friends find the best place to meet. Enter everyone's sta
 
 ## Getting Started
 
+Check out the live production version [here](https://mway.vercel.app).
+
+Or, if you want to experiment with the codebase, follow these steps below.
+
 ### Prerequisites
 - Node.js 18+
 - A Google Cloud project with Maps JavaScript API enabled
@@ -94,8 +98,8 @@ Midway helps groups of friends find the best place to meet. Enter everyone's sta
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/SVirat/midway.git
-   cd midway
+   git clone https://github.com/SVirat/Midway.git
+   cd Midway
    ```
 
 2. **Install dependencies**
