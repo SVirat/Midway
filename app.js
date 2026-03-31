@@ -37,7 +37,27 @@ const state = {
 };
 
 // Client-side route cache: key = "lat1,lng1->lat2,lng2" => route result
-const _routeCache = {};
+// Persists to localStorage so results survive page reloads
+const _routeCache = (function() {
+  try {
+    var stored = localStorage.getItem('midway_route_cache');
+    if (stored) {
+      var parsed = JSON.parse(stored);
+      // Expire after 7 days
+      if (parsed._ts && Date.now() - parsed._ts < 7 * 24 * 60 * 60 * 1000) {
+        delete parsed._ts;
+        return parsed;
+      }
+    }
+  } catch(e) {}
+  return {};
+})();
+function _persistRouteCache() {
+  try {
+    var obj = Object.assign({}, _routeCache, { _ts: Date.now() });
+    localStorage.setItem('midway_route_cache', JSON.stringify(obj));
+  } catch(e) {}
+}
 function routeCacheKey(origin, dest) {
   return origin.lat.toFixed(6) + ',' + origin.lng.toFixed(6) + '->' + dest.lat.toFixed(6) + ',' + dest.lng.toFixed(6);
 }
@@ -1590,6 +1610,7 @@ function fetchOneRoute(origin, dest, retries) {
           routePoints: decodeOverviewPolyline(result.routes[0].overview_polyline),
         };
         _routeCache[cKey] = routeResult;
+        _persistRouteCache();
         res(routeResult);
       } else if (status === 'OVER_QUERY_LIMIT' && retries < 3) {
         setTimeout(function() {
