@@ -3432,3 +3432,245 @@ a {
   }
 }
 
+/* ========================================
+   REVERSE SEARCH
+   ======================================== */
+.reverse-search {
+  margin-top: var(--space-md);
+}
+
+.reverse-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin: var(--space-md) 0;
+}
+
+.reverse-divider::before,
+.reverse-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.reverse-divider span {
+  padding: 0 var(--space-md);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.reverse-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+}
+
+.reverse-card h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 1rem;
+  color: var(--text);
+  margin: 0 0 var(--space-xs);
+}
+
+.reverse-card h3 i {
+  color: var(--primary);
+}
+
+.reverse-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-md);
+}
+
+.reverse-input-row {
+  margin-bottom: var(--space-md);
+}
+
+.reverse-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.reverse-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.1);
+}
+
+.reverse-input::placeholder {
+  color: var(--text-dim);
+}
+
+.btn-reverse {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Reverse results list */
+.reverse-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: var(--space-sm) var(--space-xs) var(--space-md);
+}
+
+.reverse-summary i {
+  color: var(--primary);
+}
+
+.reverse-share-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.reverse-share-btn i {
+  color: inherit;
+}
+
+.reverse-person-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  margin-bottom: var(--space-sm);
+}
+
+.reverse-person-card.closest {
+  border-color: var(--success);
+  box-shadow: 0 0 0 1px var(--success);
+}
+
+.reverse-rank {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reverse-person-card .person-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+.reverse-person-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.reverse-person-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.reverse-person-addr {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reverse-person-dist {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.reverse-km {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.reverse-time {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.reverse-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--success);
+}
+
+/* Reverse share card mini-list (inside share modal) */
+.fc-rev-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md) 0;
+}
+
+.fc-rev-person {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.82rem;
+}
+
+.fc-rev-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+.fc-rev-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-rev-dist {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+

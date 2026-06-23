@@ -34,6 +34,8 @@ const state = {
   groupMembers: {},      // memberId -> { name, address, lat, lng }
   memberId: null,
   myLocationId: null,    // id of first local location ("You")
+  reverseDest: null,     // { name, address, lat, lng } chosen for reverse search
+  reverseActive: false,  // true when the current results view is a reverse search
 };
 
 // Client-side route cache: key = "lat1,lng1->lat2,lng2" => route result
@@ -259,6 +261,9 @@ function onGoogleMapsReady() {
   document.querySelectorAll('.location-row input[data-id]').forEach(input => {
     attachGoogleAutocomplete(input);
   });
+
+  // Attach autocomplete to the reverse-search venue input
+  attachReverseAutocomplete();
 }
 
 // Lazily request browser location for autocomplete biasing (only on first interaction)
@@ -952,6 +957,210 @@ function hideResultsLoading() {
 function updateFindButton() {
   const btn = document.getElementById('findBtn');
   btn.disabled = state.locations.length < 2;
+  updateReverseButton();
+}
+
+// ---------- Reverse Search ----------
+// Attach Google Places Autocomplete to the reverse-search venue input
+function attachReverseAutocomplete() {
+  if (!state.googleReady) return;
+  const input = document.getElementById('reverseVenueInput');
+  if (!input || input._reverseAcAttached) return;
+
+  const options = { types: ['geocode', 'establishment'] };
+  if (state.userLatLng) {
+    options.bounds = new google.maps.LatLngBounds(
+      new google.maps.LatLng(state.userLatLng.lat() - 0.5, state.userLatLng.lng() - 0.5),
+      new google.maps.LatLng(state.userLatLng.lat() + 0.5, state.userLatLng.lng() + 0.5)
+    );
+  }
+
+  const ac = new google.maps.places.Autocomplete(input, options);
+  ac.addListener('place_changed', () => {
+    logApiCall('google_maps', 'autocomplete', true, null, null);
+    const place = ac.getPlace();
+    if (!place.geometry) return;
+    state.reverseDest = {
+      name: place.name || place.formatted_address || input.value,
+      address: place.formatted_address || place.name || input.value,
+      lat: place.geometry.location.lat(),
+      lng: place.geometry.location.lng(),
+    };
+    input.value = state.reverseDest.address;
+    updateReverseButton();
+  });
+  input._reverseAcAttached = true;
+}
+
+// Fired on every keystroke in the reverse input — invalidate any previously
+// picked place so we re-resolve on submit.
+function onReverseInput() {
+  state.reverseDest = null;
+  requestLocationBias();
+  updateReverseButton();
+}
+
+function updateReverseButton() {
+  const btn = document.getElementById('reverseBtn');
+  if (!btn) return;
+  const input = document.getElementById('reverseVenueInput');
+  const hasText = !!(input && input.value.trim());
+  const hasPeople = state.locations.length >= 1;
+  btn.disabled = !(hasText && hasPeople);
+}
+
+// Geocode a free-text destination when the user didn't pick from autocomplete
+function geocodeReverseDest(text) {
+  return new Promise((resolve) => {
+    if (!state.googleReady || !google.maps.Geocoder) {
+      resolve(null);
+      return;
+    }
+    if (!_gmapsMonthlyQuota.check('geocode')) {
+      showQuotaExceededPopup();
+      resolve(null);
+      return;
+    }
+    if (!_gmapsRateLimit.check('geocode')) {
+      showToast('Too many requests — please wait a moment');
+      resolve(null);
+      return;
+    }
+    const geocoder = new google.maps.Geocoder();
+    const _gcStart = Date.now();
+    geocoder.geocode({ address: text }, (results, status) => {
+      if (status === 'OK') _gmapsMonthlyQuota.record('geocode');
+      logApiCall('google_maps', 'geocode', status === 'OK', status !== 'OK' ? status : null, Date.now() - _gcStart);
+      if (status === 'OK' && results[0]) {
+        const loc = results[0].geometry.location;
+        resolve({
+          name: text,
+          address: results[0].formatted_address,
+          lat: loc.lat(),
+          lng: loc.lng(),
+        });
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
+async function runReverseSearch() {
+  if (state.locations.length < 1) {
+    showToast('Add at least one person\u2019s location first.');
+    return;
+  }
+
+  const input = document.getElementById('reverseVenueInput');
+  const btn = document.getElementById('reverseBtn');
+  const origLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Calculating...';
+
+  // Resolve the destination (use the picked place, or geocode the typed text)
+  let dest = state.reverseDest;
+  if (!dest) {
+    const text = input ? input.value.trim() : '';
+    if (!text) {
+      btn.disabled = false;
+      btn.innerHTML = origLabel;
+      updateReverseButton();
+      return;
+    }
+    dest = await geocodeReverseDest(text);
+    if (!dest) {
+      showToast('Could not find that location. Try picking a suggestion.');
+      btn.disabled = false;
+      btn.innerHTML = origLabel;
+      updateReverseButton();
+      return;
+    }
+    state.reverseDest = dest;
+    if (input) input.value = dest.address;
+  }
+
+  trackEvent('reverse_search', {
+    destination: { name: dest.name, address: dest.address, lat: dest.lat, lng: dest.lng },
+    locationCount: state.locations.length,
+  });
+
+  // Mark the current results view as a reverse search and reset share cache
+  state.reverseActive = true;
+  _currentShareCode = null;
+  _currentShareResultsKey = null;
+
+  // Show results section
+  const section = document.getElementById('resultsSection');
+  section.style.display = 'block';
+  document.getElementById('shareBtn').style.display = '';
+
+  document.getElementById('resultsList').innerHTML = '';
+  const summaryEl = document.getElementById('resultsSummary');
+  if (summaryEl) summaryEl.innerHTML = '';
+  showResultsLoading('Calculating real driving routes...');
+  setLoadingProgress(40);
+
+  setTimeout(() => {
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
+
+  const distanceData = await fetchRealDistances({ lat: dest.lat, lng: dest.lng });
+
+  setLoadingProgress(90);
+  hideResultsLoading();
+
+  state._distanceData = distanceData;
+  renderReverseResults(dest, distanceData);
+  renderMap({ lat: dest.lat, lng: dest.lng }, distanceData, [
+    { id: 1, lat: dest.lat, lng: dest.lng, name: dest.name, type: 'Your destination', rating: null },
+  ]);
+
+  btn.disabled = false;
+  btn.innerHTML = origLabel;
+  updateReverseButton();
+}
+
+function renderReverseResults(dest, distanceData) {
+  // Update results header + badge for reverse-search context
+  const topHeader = document.querySelector('.results-top-header h3');
+  if (topHeader) topHeader.textContent = 'Travel distances';
+  const badge = document.getElementById('resultModeBadge');
+  if (badge) {
+    badge.innerHTML = '<i class="fa-solid fa-location-dot"></i> ' + escapeHtml(dest.name);
+    badge.className = 'results-mode-badge';
+  }
+
+  // Assign stable colors by original order (matches map route colors)
+  distanceData.forEach((d, i) => { d._color = AVATAR_COLORS[i % AVATAR_COLORS.length]; });
+
+  const sorted = distanceData.slice().sort((a, b) => a.distKm - b.distKm);
+
+  const summary =
+    '<div class="reverse-summary">' +
+    '<span><i class="fa-solid fa-route"></i> How far everyone travels to <strong>' + escapeHtml(dest.name) + '</strong></span>' +
+    '<button class="btn btn-sm btn-primary reverse-share-btn" onclick="showShareModal()"><i class="fa-solid fa-share-nodes"></i> Share</button>' +
+    '</div>';
+
+  const rows = sorted.map((d, i) => `
+    <div class="reverse-person-card ${i === 0 ? 'closest' : ''}">
+      <div class="reverse-rank">${i + 1}</div>
+      <div class="person-avatar" style="background:${d._color}">${escapeHtml(d.loc.name.charAt(0).toUpperCase())}</div>
+      <div class="reverse-person-info">
+        <div class="reverse-person-name">${escapeHtml(d.loc.name)}${i === 0 ? ' <span class="reverse-tag">Closest</span>' : ''}</div>
+        <div class="reverse-person-addr">${escapeHtml(d.loc.address || '')}</div>
+      </div>
+      <div class="reverse-person-dist">
+        <div class="reverse-km">${d.distKm.toFixed(1)} km</div>
+        ${d.durationMin !== null ? '<div class="reverse-time">' + d.durationMin + ' min drive</div>' : ''}
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('resultsList').innerHTML = summary + rows;
+
+  const layout = document.querySelector('.results-layout-inline');
+  if (layout) layout.classList.remove('expanded');
 }
 
 function toggleMoreOptions() {
@@ -1006,6 +1215,7 @@ function findSweetSpot() {
   if (state.locations.length < 2) return;
 
   state._sortMode = 'closest';
+  state.reverseActive = false;
   _currentShareCode = null;
   _currentShareResultsKey = null;
 
@@ -1040,6 +1250,10 @@ function findSweetSpot() {
   const section = document.getElementById('resultsSection');
   section.style.display = 'block';
   document.getElementById('shareBtn').style.display = '';
+
+  // Restore default results header (reverse search may have changed it)
+  const topHeader = document.querySelector('.results-top-header h3');
+  if (topHeader) topHeader.textContent = 'Top Spots';
 
   // Set mode badge
   const badge = document.getElementById('resultModeBadge');
@@ -1963,7 +2177,7 @@ function getDirections(lat, lng) {
 }
 
 // ---------- Map ----------
-function renderMap(center, distanceData) {
+function renderMap(center, distanceData, venueOverride) {
   if (state.map) {
     state.map.remove();
     state.map = null;
@@ -2100,7 +2314,7 @@ function renderMap(center, distanceData) {
   });
 
   // Venue markers — use sorted order to match sidebar ranks
-  var sortedVenues = getSortedVenues();
+  var sortedVenues = venueOverride || getSortedVenues();
   sortedVenues.forEach((v, i) => {
     const vIcon = L.divIcon({
       className: '',
@@ -2290,6 +2504,14 @@ function showShareModal() {
   const modal = document.getElementById('shareModal');
   modal.classList.add('visible');
   document.getElementById('sharePreview').style.display = 'none';
+
+  // Reverse-search share: render the destination + travel distances card
+  if (state.reverseActive && state.reverseDest) {
+    trackEvent('share_modal_open', { reverse: true, destination: state.reverseDest.name });
+    _populateReverseShareCard(state.reverseDest);
+    return;
+  }
+
   trackEvent('share_modal_open', {
     venueName: state.chosenVenue ? state.chosenVenue.name : null,
   });
@@ -2378,6 +2600,57 @@ function hideShareModal(e) {
   document.getElementById('shareModal').classList.remove('visible');
 }
 
+// Render the share card for a reverse search (destination + travel distances)
+function _populateReverseShareCard(dest) {
+  const card = document.getElementById('fairnessCard');
+  const dd = state._distanceData || [];
+  const numPeople = dd.length;
+  const totalDist = dd.reduce((s, d) => s + d.distKm, 0);
+  const hasDurations = dd.some(d => d.durationMin !== null);
+  const totalDuration = hasDurations ? dd.reduce((s, d) => s + (d.durationMin || 0), 0) : null;
+  const avgDist = numPeople > 0 ? (totalDist / numPeople).toFixed(1) : '—';
+  const avgTime = totalDuration !== null && numPeople > 0 ? Math.round(totalDuration / numPeople) : null;
+
+  const sorted = dd.slice().sort((a, b) => a.distKm - b.distKm);
+  const peopleRows = sorted.map((d, i) => {
+    const color = AVATAR_COLORS[dd.indexOf(d) % AVATAR_COLORS.length];
+    return '<div class="fc-rev-person">' +
+      '<span class="fc-rev-avatar" style="background:' + color + '">' + escapeHtml(d.loc.name.charAt(0).toUpperCase()) + '</span>' +
+      '<span class="fc-rev-name">' + escapeHtml(d.loc.name) + '</span>' +
+      '<span class="fc-rev-dist">' + d.distKm.toFixed(1) + ' km' + (d.durationMin !== null ? ' · ' + d.durationMin + ' min' : '') + '</span>' +
+      '</div>';
+  }).join('');
+
+  card.innerHTML = `
+    <div class="fc-hero">
+      <div class="fc-photo" style="background:#4A6CF7">
+        <i class="fa-solid fa-location-dot"></i>
+      </div>
+      <div class="fc-hero-info">
+        <div class="fc-venue-name">${escapeHtml(dest.name)}</div>
+        <div class="venue-actions fc-hero-actions">
+          <button class="btn-tiny" onclick="event.stopPropagation(); getDirections(${dest.lat}, ${dest.lng})"><i class="fa-solid fa-diamond-turn-right"></i> Directions</button>
+        </div>
+      </div>
+    </div>
+    <div class="fc-rev-list">${peopleRows}</div>
+    <div class="fc-stats">
+      <div class="fc-stat">
+        <div class="fc-stat-val"><i class="fa-solid fa-users"></i> ${numPeople}</div>
+        <div class="fc-stat-label">people</div>
+      </div>
+      <div class="fc-stat">
+        <div class="fc-stat-val"><i class="fa-solid fa-road"></i> ${avgDist} km</div>
+        <div class="fc-stat-label">avg distance</div>
+      </div>
+      <div class="fc-stat">
+        <div class="fc-stat-val"><i class="fa-solid fa-clock"></i> ${avgTime !== null ? avgTime + ' min' : '—'}</div>
+        <div class="fc-stat-label">avg drive</div>
+      </div>
+    </div>
+  `;
+}
+
 // ---------- Share Snapshot ----------
 function generateShareCode() {
   // 5-char lowercase alphanumeric, distinct from 6-char uppercase group codes
@@ -2388,6 +2661,25 @@ function generateShareCode() {
 }
 
 function buildShareSnapshot() {
+  // Reverse search snapshot: destination + everyone's travel distances
+  if (state.reverseActive && state.reverseDest) {
+    return {
+      type: 'reverse',
+      destination: {
+        name: state.reverseDest.name,
+        address: state.reverseDest.address,
+        lat: state.reverseDest.lat,
+        lng: state.reverseDest.lng,
+      },
+      locations: state.locations.map(function(l) {
+        return { name: l.name, address: l.address, lat: l.lat, lng: l.lng };
+      }),
+      distanceData: (state._distanceData || []).map(function(d) {
+        return { locName: d.loc.name, distKm: d.distKm, durationMin: d.durationMin, routePoints: d.routePoints || [] };
+      }),
+    };
+  }
+
   var v = state.chosenVenue || (state.results[0] || null);
   return {
     locations: state.locations.map(function(l) {
@@ -2436,9 +2728,15 @@ var _currentShareCode = null;
 var _currentShareResultsKey = null;
 
 async function getOrCreateShareCode() {
-  // Cache key: hash of chosen venue + locations
-  var v = state.chosenVenue || (state.results[0] || null);
-  var key = (v ? v.placeId || v.name : '') + '|' + state.locations.map(function(l) { return l.lat + ',' + l.lng; }).join(';');
+  // Cache key: hash of chosen venue (or reverse destination) + locations
+  var keyHead;
+  if (state.reverseActive && state.reverseDest) {
+    keyHead = 'rev:' + (state.reverseDest.lat + ',' + state.reverseDest.lng);
+  } else {
+    var v = state.chosenVenue || (state.results[0] || null);
+    keyHead = (v ? v.placeId || v.name : '');
+  }
+  var key = keyHead + '|' + state.locations.map(function(l) { return l.lat + ',' + l.lng; }).join(';');
   if (_currentShareCode && _currentShareResultsKey === key) return _currentShareCode;
   var code = await saveShareSnapshot();
   if (code) {
@@ -2454,6 +2752,21 @@ function getShareLink(shareCode) {
 }
 
 function getShareMessage(shareLink) {
+  // Reverse search: list everyone's travel distance to the chosen destination
+  if (state.reverseActive && state.reverseDest) {
+    const dest = state.reverseDest;
+    const dd = (state._distanceData || []).slice().sort((a, b) => a.distKm - b.distKm);
+    let rmsg = 'Hey! Here\u2019s how far everyone is from ' + dest.name + ':';
+    if (dest.lat && dest.lng) {
+      rmsg += '\n📍 https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(dest.lat + ',' + dest.lng);
+    }
+    dd.forEach(function(d) {
+      rmsg += '\n• ' + d.loc.name + ': ' + d.distKm.toFixed(1) + ' km' + (d.durationMin !== null ? ' (' + d.durationMin + ' min drive)' : '');
+    });
+    rmsg += '\n\nSee the full map: ' + shareLink;
+    return rmsg;
+  }
+
   const v = state.chosenVenue || (state.results[0] || null);
   let msg = 'Hey! How does this look?\n' + (v ? v.name : '');
   if (v && v.placeId) msg += ' (https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(v.name) + '&query_place_id=' + encodeURIComponent(v.placeId) + ')';
@@ -2506,6 +2819,71 @@ function copyInviteLink() {
   });
 }
 
+// Reconstruct a shared reverse-search view from a snapshot
+function renderSharedReverse(snap, code) {
+  state.reverseActive = true;
+  state._sortMode = 'closest';
+
+  var dest = snap.destination || {};
+  state.reverseDest = { name: dest.name, address: dest.address, lat: dest.lat, lng: dest.lng };
+
+  // Rebuild the locations list from the snapshot's people
+  state.locations = [];
+  document.getElementById('locationsList').innerHTML = '';
+  locationCounter = 0;
+  (snap.locations || []).forEach(function(loc) {
+    addLocationInput(loc.name);
+    var id = locationCounter;
+    var row = document.querySelector('.location-row[data-id="' + id + '"]');
+    if (row) {
+      var input = row.querySelector('input[data-id]');
+      if (input) input.value = loc.address || '';
+      var nameInput = row.querySelector('.name-input');
+      if (nameInput) nameInput.value = loc.name;
+    }
+    state.locations.push({ id: id, name: loc.name, address: loc.address, lat: loc.lat, lng: loc.lng });
+  });
+
+  // Pre-fill the reverse-search input with the destination
+  var revInput = document.getElementById('reverseVenueInput');
+  if (revInput) revInput.value = dest.address || dest.name || '';
+
+  // Reconstruct distance data keyed to the shared people
+  var sharedLocs = snap.locations || [];
+  state._distanceData = (snap.distanceData || []).map(function(d, i) {
+    var srcLoc = sharedLocs[i] || {};
+    var srcLat = srcLoc.lat || 0;
+    var srcLng = srcLoc.lng || 0;
+    return {
+      loc: { name: d.locName, address: srcLoc.address || '', lat: srcLat, lng: srcLng },
+      distKm: d.distKm,
+      durationMin: d.durationMin,
+      routePoints: (d.routePoints && d.routePoints.length > 0) ? d.routePoints : [[srcLat, srcLng], [dest.lat, dest.lng]],
+    };
+  });
+
+  // Show results section + Share button
+  var section = document.getElementById('resultsSection');
+  section.style.display = 'block';
+  document.getElementById('shareBtn').style.display = '';
+
+  renderReverseResults(state.reverseDest, state._distanceData);
+  renderMap({ lat: dest.lat, lng: dest.lng }, state._distanceData, [
+    { id: 1, lat: dest.lat, lng: dest.lng, name: dest.name, type: 'Your destination', rating: null },
+  ]);
+
+  setTimeout(function() {
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 300);
+
+  // Clean share param from URL
+  var cleanUrl = new URL(window.location.href);
+  cleanUrl.searchParams.delete('s');
+  window.history.replaceState({}, '', cleanUrl);
+
+  trackEvent('shared_session_loaded', { shareCode: code, reverse: true });
+}
+
 // ---------- Load Shared Session ----------
 async function loadSharedSession() {
   var params = new URLSearchParams(window.location.search);
@@ -2540,7 +2918,15 @@ async function loadSharedSession() {
   }
 
   var snap = data.snapshot;
-  if (!snap || !snap.results || snap.results.length === 0) return;
+  if (!snap) return;
+
+  // Reverse search share — render the destination + travel distances view
+  if (snap.type === 'reverse') {
+    renderSharedReverse(snap, code);
+    return;
+  }
+
+  if (!snap.results || snap.results.length === 0) return;
 
   // Restore state from snapshot
   state.mode = snap.mode || 'fairness';

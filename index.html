@@ -183,6 +183,21 @@
         <button class="btn btn-primary btn-lg btn-find" id="findBtn" onclick="findSweetSpot()" disabled>
           <i class="fa-solid fa-location-crosshairs"></i> Find the Midway
         </button>
+
+        <!-- Reverse Search -->
+        <div class="reverse-search">
+          <div class="reverse-divider"><span>or</span></div>
+          <div class="reverse-card">
+            <h3><i class="fa-solid fa-location-dot"></i> Find the distance to a spot </h3>
+            <p class="reverse-sub">Already have a spot in mind? See how far everyone has to travel to it.</p>
+            <div class="reverse-input-row">
+              <input type="text" id="reverseVenueInput" class="reverse-input" placeholder="Enter a venue or place..." autocomplete="off" oninput="onReverseInput()" />
+            </div>
+            <button class="btn btn-primary btn-lg btn-reverse" id="reverseBtn" onclick="runReverseSearch()" disabled>
+              <i class="fa-solid fa-location-crosshairs"></i> Show distances from everyone
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
