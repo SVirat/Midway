@@ -3521,6 +3521,55 @@ a {
 }
 
 /* Reverse results list */
+.reverse-dest-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  margin-bottom: var(--space-md);
+}
+
+.reverse-dest-photo {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.3rem;
+}
+
+.reverse-dest-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reverse-dest-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.reverse-dest-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.reverse-dest-addr {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .reverse-summary {
   display: flex;
   align-items: center;

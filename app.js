@@ -980,11 +980,17 @@ function attachReverseAutocomplete() {
     logApiCall('google_maps', 'autocomplete', true, null, null);
     const place = ac.getPlace();
     if (!place.geometry) return;
+    let photoUrl = null;
+    if (place.photos && place.photos[0]) {
+      try { photoUrl = place.photos[0].getUrl({ maxWidth: 400 }); } catch (e) {}
+    }
     state.reverseDest = {
       name: place.name || place.formatted_address || input.value,
       address: place.formatted_address || place.name || input.value,
       lat: place.geometry.location.lat(),
       lng: place.geometry.location.lng(),
+      placeId: place.place_id || null,
+      photoUrl: photoUrl,
     };
     input.value = state.reverseDest.address;
     updateReverseButton();
@@ -1107,6 +1113,9 @@ async function runReverseSearch() {
 
   const distanceData = await fetchRealDistances({ lat: dest.lat, lng: dest.lng });
 
+  // Best-effort: fetch a venue photo for the destination if we don't have one
+  await enrichReverseDestPhoto(dest);
+
   setLoadingProgress(90);
   hideResultsLoading();
 
@@ -1136,6 +1145,21 @@ function renderReverseResults(dest, distanceData) {
 
   const sorted = distanceData.slice().sort((a, b) => a.distKm - b.distKm);
 
+  // Destination venue header (with photo if available)
+  const destHeader =
+    '<div class="reverse-dest-card">' +
+    '<div class="reverse-dest-photo" style="' + (dest.photoUrl ? '' : 'background:#4A6CF7') + '">' +
+    (dest.photoUrl
+      ? '<img src="' + dest.photoUrl.replace(/"/g, '&quot;') + '" alt="" referrerpolicy="no-referrer" class="reverse-dest-img" />'
+      : '<i class="fa-solid fa-location-dot"></i>') +
+    '</div>' +
+    '<div class="reverse-dest-info">' +
+    '<div class="reverse-dest-name">' + escapeHtml(dest.name) + '</div>' +
+    '<div class="reverse-dest-addr">' + escapeHtml(dest.address || '') + '</div>' +
+    '</div>' +
+    '<div class="venue-actions"><button class="btn-tiny" onclick="viewReverseDest()">View</button></div>' +
+    '</div>';
+
   const summary =
     '<div class="reverse-summary">' +
     '<span><i class="fa-solid fa-route"></i> How far everyone travels to <strong>' + escapeHtml(dest.name) + '</strong></span>' +
@@ -1157,10 +1181,58 @@ function renderReverseResults(dest, distanceData) {
     </div>
   `).join('');
 
-  document.getElementById('resultsList').innerHTML = summary + rows;
+  document.getElementById('resultsList').innerHTML = destHeader + summary + rows;
 
   const layout = document.querySelector('.results-layout-inline');
   if (layout) layout.classList.remove('expanded');
+}
+
+// Open the reverse-search destination on Google Maps
+function viewReverseDest() {
+  const d = state.reverseDest;
+  if (!d) return;
+  let url;
+  if (d.placeId) {
+    url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(d.name || (d.lat + ',' + d.lng)) + '&query_place_id=' + encodeURIComponent(d.placeId);
+  } else {
+    url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(d.lat + ',' + d.lng);
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+  trackEvent('reverse_dest_view', { name: d.name, placeId: d.placeId || null });
+}
+
+// Best-effort fetch of a Google Places photo for the reverse destination
+function enrichReverseDestPhoto(dest) {
+  return new Promise((resolve) => {
+    if (!dest || dest.photoUrl || !state.googleReady || !state.placesService) {
+      resolve(dest);
+      return;
+    }
+    if (!_gmapsMonthlyQuota.check('place_details') || !_gmapsRateLimit.check('place_details')) {
+      resolve(dest);
+      return;
+    }
+    const query = dest.name || dest.address;
+    if (!query) { resolve(dest); return; }
+    const _start = Date.now();
+    state.placesService.findPlaceFromQuery({
+      query: query,
+      fields: ['photos', 'place_id'],
+      locationBias: new google.maps.LatLng(dest.lat, dest.lng),
+    }, (results, status) => {
+      const ok = status === google.maps.places.PlacesServiceStatus.OK && results && results[0];
+      if (ok) {
+        _gmapsMonthlyQuota.record('place_details');
+        const p = results[0];
+        if (p.place_id) dest.placeId = p.place_id;
+        if (p.photos && p.photos[0]) {
+          try { dest.photoUrl = p.photos[0].getUrl({ maxWidth: 400 }); } catch (e) {}
+        }
+      }
+      logApiCall('google_maps', 'place_details', !!ok, ok ? null : status, Date.now() - _start);
+      resolve(dest);
+    });
+  });
 }
 
 function toggleMoreOptions() {
@@ -2623,13 +2695,13 @@ function _populateReverseShareCard(dest) {
 
   card.innerHTML = `
     <div class="fc-hero">
-      <div class="fc-photo" style="background:#4A6CF7">
-        <i class="fa-solid fa-location-dot"></i>
+      <div class="fc-photo" style="${dest.photoUrl ? '' : 'background:#4A6CF7'}">
+        ${dest.photoUrl ? '<img src="' + dest.photoUrl.replace(/"/g, '&quot;') + '" alt="" referrerpolicy="no-referrer" class="fc-photo-img" />' : '<i class="fa-solid fa-location-dot"></i>'}
       </div>
       <div class="fc-hero-info">
         <div class="fc-venue-name">${escapeHtml(dest.name)}</div>
         <div class="venue-actions fc-hero-actions">
-          <button class="btn-tiny" onclick="event.stopPropagation(); getDirections(${dest.lat}, ${dest.lng})"><i class="fa-solid fa-diamond-turn-right"></i> Directions</button>
+          <button class="btn-tiny" onclick="event.stopPropagation(); viewReverseDest()">View</button>
         </div>
       </div>
     </div>
@@ -2670,6 +2742,8 @@ function buildShareSnapshot() {
         address: state.reverseDest.address,
         lat: state.reverseDest.lat,
         lng: state.reverseDest.lng,
+        placeId: state.reverseDest.placeId || null,
+        photoUrl: state.reverseDest.photoUrl || null,
       },
       locations: state.locations.map(function(l) {
         return { name: l.name, address: l.address, lat: l.lat, lng: l.lng };
@@ -2825,7 +2899,7 @@ function renderSharedReverse(snap, code) {
   state._sortMode = 'closest';
 
   var dest = snap.destination || {};
-  state.reverseDest = { name: dest.name, address: dest.address, lat: dest.lat, lng: dest.lng };
+  state.reverseDest = { name: dest.name, address: dest.address, lat: dest.lat, lng: dest.lng, placeId: dest.placeId || null, photoUrl: dest.photoUrl || null };
 
   // Rebuild the locations list from the snapshot's people
   state.locations = [];
