@@ -3171,6 +3171,11 @@ a {
   text-decoration: underline;
 }
 
+.site-footer .footer-legal {
+  font-size: 0.7rem;
+  margin-top: var(--space-xs);
+}
+
 /* ========================================
    UPGRADE BUTTON & MODAL
    ======================================== */

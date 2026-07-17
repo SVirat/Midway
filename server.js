@@ -30,7 +30,7 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static(__dirname, { extensions: ['html'] }));
 
 // ---------- Rate Limiting (in-memory sliding window) ----------
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
