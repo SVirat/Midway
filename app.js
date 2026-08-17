@@ -1099,7 +1099,6 @@ async function runReverseSearch() {
   // Show results section
   const section = document.getElementById('resultsSection');
   section.style.display = 'block';
-  if (typeof notifyAdsResultsVisible === 'function') notifyAdsResultsVisible();
   document.getElementById('shareBtn').style.display = '';
 
   document.getElementById('resultsList').innerHTML = '';
@@ -1322,7 +1321,6 @@ function findSweetSpot() {
   // Show results section
   const section = document.getElementById('resultsSection');
   section.style.display = 'block';
-  if (typeof notifyAdsResultsVisible === 'function') notifyAdsResultsVisible();
   document.getElementById('shareBtn').style.display = '';
 
   // Restore default results header (reverse search may have changed it)
@@ -2941,7 +2939,6 @@ function renderSharedReverse(snap, code) {
   // Show results section + Share button
   var section = document.getElementById('resultsSection');
   section.style.display = 'block';
-  if (typeof notifyAdsResultsVisible === 'function') notifyAdsResultsVisible();
   document.getElementById('shareBtn').style.display = '';
 
   renderReverseResults(state.reverseDest, state._distanceData);
@@ -3072,7 +3069,6 @@ async function loadSharedSession() {
   // Show results section
   var section = document.getElementById('resultsSection');
   section.style.display = 'block';
-  if (typeof notifyAdsResultsVisible === 'function') notifyAdsResultsVisible();
   document.getElementById('shareBtn').style.display = '';
 
   var badge = document.getElementById('resultModeBadge');

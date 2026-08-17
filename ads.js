@@ -4,7 +4,6 @@
   var slotPattern = /^\d+$/;
   var placements = {
     setup: 'ADSENSE_SETUP_SLOT',
-    results: 'ADSENSE_RESULTS_SLOT',
   };
 
   function isConfigured() {
@@ -56,14 +55,9 @@
 
     loadAdSenseScript();
     showPlacement('setup');
-    var results = document.getElementById('resultsSection');
-    if (results && results.style.display !== 'none') showPlacement('results');
   }
 
   window.updateAdsVisibility = updateAdsVisibility;
-  window.notifyAdsResultsVisible = function() {
-    updateAdsVisibility();
-  };
 
   document.addEventListener('DOMContentLoaded', updateAdsVisibility);
 })();
