@@ -824,6 +824,7 @@ function updateProBadge() {
   var dropdownBadge = document.getElementById('proBadgeDropdown');
   if (avatarBadge) avatarBadge.style.display = show ? '' : 'none';
   if (dropdownBadge) dropdownBadge.style.display = show ? 'inline' : 'none';
+  if (typeof updateAdsVisibility === 'function') updateAdsVisibility();
 }
 
 // ---------- Upgrade Modal ----------

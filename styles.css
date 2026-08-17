@@ -306,6 +306,41 @@ a {
   font-size: 0.88rem;
 }
 
+/* Responsive ads stay visually separate from the app's interactive surfaces. */
+.ad-placement {
+  width: min(100% - (2 * var(--space-xl)), 760px);
+  min-height: 112px;
+  margin: var(--space-xl) auto;
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.ad-placement[hidden] {
+  display: none;
+}
+
+.ad-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+  color: var(--text-dim);
+  font-size: 0.65rem;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.ad-placement .adsbygoogle {
+  min-height: 80px;
+}
+
+.ad-placement-results {
+  margin-top: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
 /* Mode Toggle */
 .mode-toggle-container {
   display: flex;
@@ -2143,6 +2178,22 @@ a {
     max-width: 260px;
     margin-left: auto;
     margin-right: auto;
+  }
+
+  .ad-placement {
+    width: calc(100% - (2 * var(--space-md)));
+    min-height: 92px;
+    margin: var(--space-lg) auto;
+    padding: 6px var(--space-sm) var(--space-sm);
+  }
+
+  .ad-placement .adsbygoogle {
+    min-height: 64px;
+  }
+
+  /* Keep mobile monetization light: one slot per screen flow. */
+  .ad-placement-results {
+    display: none;
   }
 
   .setup-columns {

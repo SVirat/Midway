@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Effective Date:** March 21, 2026  
-**Last Updated:** March 31, 2026  
+**Last Updated:** August 17, 2026  
 **App:** Midway  
 **URL:** https://mway.vercel.app  
 **Developer:** Virat Singh
@@ -12,7 +12,7 @@
 
 Midway ("we", "our", "the app") is a web application that helps groups find a fair meeting location. This Privacy Policy explains what data we collect, how we use it, and your rights regarding that data.
 
-We are committed to protecting your privacy. We do not sell your data, we do not use third-party ad trackers, and we collect only what is necessary to provide and improve the service.
+We are committed to protecting your privacy. We do not sell your data, and we collect only what is necessary to provide, improve, and support the service. The free version may display advertising provided by Google AdSense.
 
 ---
 
@@ -38,9 +38,10 @@ We are committed to protecting your privacy. We do not sell your data, we do not
 | **Device info** | Browser name, screen size, platform. Used for compatibility monitoring. |
 | **Client errors** | JavaScript errors and unhandled exceptions. Used for debugging. |
 | **API call logs** | Which external APIs were called, response times, and success/failure. No user content is logged. |
+| **Advertising data** | Google AdSense may use cookies, device identifiers, IP address, and ad interaction data to serve, measure, and personalize ads where permitted. |
 
 ### 2.3 Data We Do NOT Collect
-- We do **not** use cookies for tracking
+- Midway does **not** set its own advertising cookies; Google AdSense may use cookies or similar technologies as described below
 - We do **not** fingerprint your device
 - We do **not** record your browsing history outside the app
 - We do **not** collect or store payment card details (all payment processing is handled entirely by Razorpay; we only receive subscription IDs and payment confirmation tokens)
@@ -60,6 +61,7 @@ We are committed to protecting your privacy. We do not sell your data, we do not
 | Save your locations | Addresses (only if signed in) |
 | Improve the app | Aggregated analytics, session metrics, error logs |
 | AI venue ranking | Your vibe prompt text is sent to our server, then to AI providers. The prompt contains venue names and your description — no personal information. |
+| Display and measure ads | Advertising cookies, device identifiers, IP address, and ad interaction data processed by Google AdSense |
 
 ---
 
@@ -71,6 +73,7 @@ We use the following third-party services. Each has its own privacy policy:
 |---------|-----------------|----------------|
 | **Google Maps Platform** | Addresses, coordinates (for autocomplete, directions, place details) | [Google Privacy Policy](https://policies.google.com/privacy) |
 | **Google OAuth** (via Supabase) | Your Google account info during sign-in | [Google Privacy Policy](https://policies.google.com/privacy) |
+| **Google AdSense** | Cookies or similar identifiers, IP address, device information, and ad interactions used to serve and measure ads. Google may personalize ads where permitted and consented to. | [How Google uses information for advertising](https://policies.google.com/technologies/ads) |
 | **Supabase** | User profile, saved data, analytics events (our database host) | [Supabase Privacy Policy](https://supabase.com/privacy) |
 | **Google Gemini API** | AI prompts containing venue names and your vibe description | [Google AI Privacy](https://policies.google.com/privacy) |
 | **OpenAI API** | AI prompts (fallback provider) | [OpenAI Privacy Policy](https://openai.com/privacy) |
@@ -112,6 +115,7 @@ You have the right to:
 - **Access** your data — contact us and we will provide a copy of your stored data
 - **Delete** your data — contact us to request deletion of your account and all associated data
 - **Opt out of analytics** — disable JavaScript or use browser privacy tools; the app's core features require JavaScript but analytics events will not fire if blocked
+- **Control personalized ads** — manage Google's advertising settings at [My Ad Center](https://myadcenter.google.com/) or use your browser's cookie controls
 - **Revoke Google access** — remove Midway from your Google account's connected apps at [myaccount.google.com/permissions](https://myaccount.google.com/permissions)
 - **Clear local data** — clear your browser's localStorage to remove your anonymous session ID
 

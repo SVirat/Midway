@@ -127,6 +127,9 @@ Or, if you want to experiment with the codebase, follow these steps below.
    GEMINI_API_KEY=your_key        # optional
    OPENAI_API_KEY=your_key        # optional
    CLAUDE_API_KEY=your_key        # optional
+   ADSENSE_CLIENT_ID=ca-pub-your-publisher-id # optional
+   ADSENSE_SETUP_SLOT=your_setup_ad_slot      # optional
+   ADSENSE_RESULTS_SLOT=your_results_ad_slot  # optional
    ```
 
 4. **Generate config**
@@ -197,6 +200,9 @@ The project is Vercel-ready with serverless functions in `api/`:
 | `TEST_MODE` | No | Enable test mode button (`true`/`false`) |
 | `FEATURE_MORE_OPTIONS` | No | Show "More Options" section (`true`/`false`) |
 | `RAZORPAY_SUPPORT_URL` | No | "Support the developer" link |
+| `ADSENSE_CLIENT_ID` | No | Google AdSense publisher ID (`ca-pub-...`); ads stay hidden when omitted |
+| `ADSENSE_SETUP_SLOT` | No | Responsive ad unit ID shown below the setup workflow |
+| `ADSENSE_RESULTS_SLOT` | No | Responsive ad unit ID shown below desktop/tablet results |
 
 \* Required for payment/subscription features to work. The app runs without them but subscriptions will be disabled.
 
