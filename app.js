@@ -337,6 +337,29 @@ function generateSessionId() {
 }
 
 // ---------- Mode Toggle ----------
+let modeVisibilityUpdateQueued = false;
+
+function updateModeVisibility() {
+  if (modeVisibilityUpdateQueued) return;
+  modeVisibilityUpdateQueued = true;
+
+  queueMicrotask(function () {
+    modeVisibilityUpdateQueued = false;
+    const container = document.querySelector('.mode-toggle-container');
+    const toggle = document.getElementById('modeToggle');
+    const desc = document.getElementById('modeDescription');
+    const participantCount = document.querySelectorAll('#locationsList .location-row').length;
+    const shouldShow = participantCount >= 3;
+
+    if (container) container.hidden = !shouldShow;
+    if (!shouldShow) {
+      state.mode = 'fairness';
+      if (toggle) toggle.checked = false;
+      if (desc) desc.innerHTML = '<strong>Fair:</strong> No one has to travel too far';
+    }
+  });
+}
+
 document.getElementById('modeToggle').addEventListener('change', function () {
   state.mode = this.checked ? 'eco' : 'fairness';
   const desc = document.getElementById('modeDescription');
@@ -957,6 +980,7 @@ function hideResultsLoading() {
 function updateFindButton() {
   const btn = document.getElementById('findBtn');
   btn.disabled = state.locations.length < 2;
+  updateModeVisibility();
   updateReverseButton();
 }
 

@@ -162,7 +162,7 @@
         </div>
 
         <!-- Mode Toggle -->
-        <div class="mode-toggle-container">
+        <div class="mode-toggle-container" hidden>
           <label class="mode-toggle">
             <input type="checkbox" id="modeToggle" />
             <div class="toggle-track">
@@ -187,16 +187,19 @@
 
         <!-- Reverse Search -->
         <div class="reverse-search">
-          <div class="reverse-divider"><span>or</span></div>
+          <p class="reverse-transition"><strong>Check a specific place instead</strong></p>
           <div class="reverse-card">
-            <h3><i class="fa-solid fa-location-dot"></i> Find the distance to a spot </h3>
-            <p class="reverse-sub">Already have a spot in mind? See how far everyone has to travel to it.</p>
+            <h3>Already have a place in mind?</h3>
+            <p class="reverse-sub">Check how far everyone would travel.</p>
             <div class="reverse-input-row">
-              <input type="text" id="reverseVenueInput" class="reverse-input" placeholder="Enter a venue or place..." autocomplete="off" oninput="onReverseInput()" />
+              <div class="reverse-input-wrap">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="text" id="reverseVenueInput" class="reverse-input" placeholder="Enter a venue or place..." autocomplete="off" oninput="onReverseInput()" />
+              </div>
+              <button class="btn btn-primary btn-lg btn-reverse" id="reverseBtn" onclick="runReverseSearch()" disabled>
+                <i class="fa-solid fa-location-crosshairs"></i> Show distances from everyone
+              </button>
             </div>
-            <button class="btn btn-primary btn-lg btn-reverse" id="reverseBtn" onclick="runReverseSearch()" disabled>
-              <i class="fa-solid fa-location-crosshairs"></i> Show distances from everyone
-            </button>
           </div>
         </div>
       </div>

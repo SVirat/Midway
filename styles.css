@@ -348,6 +348,16 @@ a {
   justify-content: center;
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
+  animation: mode-toggle-appear 0.2s ease-out;
+}
+
+.mode-toggle-container[hidden] {
+  display: none;
+}
+
+@keyframes mode-toggle-appear {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .mode-toggle {
@@ -3495,28 +3505,10 @@ a {
   margin-top: var(--space-md);
 }
 
-.reverse-divider {
-  display: flex;
-  align-items: center;
-  text-align: center;
+.reverse-transition {
   color: var(--text-dim);
-  font-size: 0.8rem;
-  font-weight: 500;
-  margin: var(--space-md) 0;
-}
-
-.reverse-divider::before,
-.reverse-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.reverse-divider span {
-  padding: 0 var(--space-md);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.72rem;
+  margin: var(--space-lg) 0 var(--space-sm);
 }
 
 .reverse-card {
@@ -3535,10 +3527,6 @@ a {
   margin: 0 0 var(--space-xs);
 }
 
-.reverse-card h3 i {
-  color: var(--primary);
-}
-
 .reverse-sub {
   font-size: 0.82rem;
   color: var(--text-muted);
@@ -3546,7 +3534,26 @@ a {
 }
 
 .reverse-input-row {
-  margin-bottom: var(--space-md);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-sm);
+  align-items: stretch;
+}
+
+.reverse-input-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.reverse-input-wrap > i {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  pointer-events: none;
 }
 
 .reverse-input {
@@ -3554,7 +3561,9 @@ a {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 10px 14px;
+  height: 100%;
+  min-height: 44px;
+  padding: 10px 14px 10px 38px;
   color: var(--text);
   font-size: 0.85rem;
   font-family: var(--font-body);
@@ -3574,6 +3583,13 @@ a {
 .btn-reverse {
   width: 100%;
   justify-content: center;
+}
+
+@media (max-width: 600px) {
+  .reverse-card {
+    padding: var(--space-md);
+  }
+
 }
 
 /* Reverse results list */
