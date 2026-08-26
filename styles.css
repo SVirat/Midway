@@ -1141,23 +1141,6 @@ a {
   min-height: 520px;
 }
 
-.results-mode-badge {
-  background: rgba(74, 108, 247, 0.08);
-  color: var(--primary);
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.results-mode-badge.eco {
-  background: rgba(16, 185, 129, 0.08);
-  color: var(--eco);
-}
-
 /* Fairness Summary */
 .results-summary {
   background: var(--surface);
@@ -2609,9 +2592,8 @@ a {
     min-width: 220px;
   }
 
-  /* Shrink emojis in toggle & badge */
-  .toggle-option,
-  .results-mode-badge {
+  /* Shrink emojis in toggle */
+  .toggle-option {
     font-size: 0.72rem;
   }
 

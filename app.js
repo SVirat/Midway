@@ -1155,14 +1155,9 @@ async function runReverseSearch() {
 }
 
 function renderReverseResults(dest, distanceData) {
-  // Update results header + badge for reverse-search context
+  // Update results header for reverse-search context
   const topHeader = document.querySelector('.results-top-header h3');
   if (topHeader) topHeader.textContent = 'Travel distances';
-  const badge = document.getElementById('resultModeBadge');
-  if (badge) {
-    badge.innerHTML = '<i class="fa-solid fa-location-dot"></i> ' + escapeHtml(dest.name);
-    badge.className = 'results-mode-badge';
-  }
 
   // Assign stable colors by original order (matches map route colors)
   distanceData.forEach((d, i) => { d._color = AVATAR_COLORS[i % AVATAR_COLORS.length]; });
@@ -1350,16 +1345,6 @@ function findSweetSpot() {
   // Restore default results header (reverse search may have changed it)
   const topHeader = document.querySelector('.results-top-header h3');
   if (topHeader) topHeader.textContent = 'Top Spots';
-
-  // Set mode badge
-  const badge = document.getElementById('resultModeBadge');
-  if (state.mode === 'eco') {
-    badge.innerHTML = '<i class="fa-solid fa-leaf"></i> Eco';
-    badge.className = 'results-mode-badge eco';
-  } else {
-    badge.innerHTML = '😊 Fair';
-    badge.className = 'results-mode-badge';
-  }
 
   // Show loading indicators
   var summaryEl = document.getElementById('resultsSummary');
@@ -3094,15 +3079,6 @@ async function loadSharedSession() {
   var section = document.getElementById('resultsSection');
   section.style.display = 'block';
   document.getElementById('shareBtn').style.display = '';
-
-  var badge = document.getElementById('resultModeBadge');
-  if (state.mode === 'eco') {
-    badge.innerHTML = '<i class="fa-solid fa-leaf"></i> Eco';
-    badge.className = 'results-mode-badge eco';
-  } else {
-    badge.innerHTML = '\uD83D\uDE0A Fair';
-    badge.className = 'results-mode-badge';
-  }
 
   // Render from snapshot data
   renderVenueList();
