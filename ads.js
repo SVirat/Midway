@@ -48,7 +48,7 @@
   }
 
   function updateAdsVisibility() {
-    if (!isConfigured() || isPro()) {
+    if (typeof CONFIG === 'undefined' || CONFIG.ADS_ENABLED !== true || !isConfigured() || isPro()) {
       hideAllAds();
       return;
     }

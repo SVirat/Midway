@@ -3,6 +3,7 @@
 // config.js is excluded from version control via .gitignore.
 const CONFIG = {
   GOOGLE_MAPS_API_KEY: 'YOUR_GOOGLE_MAPS_API_KEY',
+  ADS_ENABLED: false,
   ADSENSE_CLIENT_ID: '', // e.g. ca-pub-1234567890123456
   ADSENSE_SETUP_SLOT: '',
   // Monthly Google Maps API call limits (free-tier protection, resets each month)
