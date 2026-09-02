@@ -2269,8 +2269,8 @@ function renderMap(center, distanceData, venueOverride) {
     attributionControl: true,
   }).setView([center.lat, center.lng], 13);
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
   }).addTo(state.map);
 
