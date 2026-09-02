@@ -1144,6 +1144,27 @@ a {
   gap: 20px;
 }
 
+.results-loading-overlay.subtle {
+  justify-content: flex-start;
+  padding-top: var(--space-md);
+  background: rgba(255, 255, 255, 0.28);
+  backdrop-filter: none;
+}
+
+.results-loading-overlay.subtle .results-loading-text {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow-md);
+}
+
+.results-loading-overlay.subtle .results-loading-bar {
+  width: 180px;
+  margin-top: -12px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
 .results-loading-bar {
   width: 220px;
   height: 4px;
@@ -1438,48 +1459,18 @@ a {
 }
 
 .venue-card.active {
-  border-color: var(--primary);
-  box-shadow: var(--shadow-glow);
+  border-color: var(--fairness);
+  box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.14);
 }
 
-/* Animated gradient border — only the #1 card */
-.venue-card.active.top-pick {
-  border: none;
-  position: relative;
-  z-index: 1;
-  background: var(--bg);
+.venue-card.active.mode-eco {
+  border-color: var(--eco);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.14);
 }
 
-.venue-card.active.top-pick::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: calc(var(--radius-md) + 1px);
-  background: conic-gradient(
-    from var(--gradient-angle, 0deg),
-    #4A6CF7, #9B59B6, #E74C8B, #F39C12, #2ECC71, #3498DB, #4A6CF7
-  );
-  z-index: -2;
-  animation: rotate-gradient 3s linear infinite;
-}
-
-.venue-card.active.top-pick::after {
-  content: '';
-  position: absolute;
-  inset: 1px;
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  z-index: -1;
-}
-
-@property --gradient-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes rotate-gradient {
-  to { --gradient-angle: 360deg; }
+.venue-card.map-highlight:not(.active) {
+  border-color: var(--primary-light);
+  background: var(--surface);
 }
 
 .venue-rank {
@@ -1499,6 +1490,10 @@ a {
 .venue-card.active .venue-rank {
   background: var(--primary);
   color: white;
+}
+
+.venue-card.active.mode-eco .venue-rank {
+  background: var(--eco);
 }
 
 .venue-info {
@@ -1696,6 +1691,21 @@ a {
   color: white;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   border: 2px solid white;
+}
+
+.venue-marker.highlighted,
+.venue-marker.active {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.2), var(--shadow-md);
+}
+
+.venue-marker.active {
+  background: var(--primary-dark);
+}
+
+.venue-marker.active.mode-eco {
+  background: var(--eco);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2), var(--shadow-md);
 }
 
 /* ========================================

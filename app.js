@@ -17,6 +17,7 @@ const state = {
   chosenVenue: null,
   map: null,
   markers: [],
+  venueMarkers: {},
   routeLayers: [],     // L.polyline references for routes
   googleReady: false,
   autocompletes: {},   // id -> google.maps.places.Autocomplete
@@ -984,18 +985,19 @@ function detectCategoryFromPrompt(prompt) {
 }
 
 // ---------- Find Sweet Spot ----------
-function showResultsLoading(message) {
+function showResultsLoading(message, subtle) {
   var layout = document.querySelector('.results-layout-inline');
   if (!layout) return;
   var existing = layout.querySelector('.results-loading-overlay');
   if (existing) {
+    if (subtle) existing.classList.add('subtle');
     // Just update text, don't recreate the bar
     var textEl = existing.querySelector('.results-loading-text');
     if (textEl) textEl.textContent = message;
     return;
   }
   var overlay = document.createElement('div');
-  overlay.className = 'results-loading-overlay';
+  overlay.className = 'results-loading-overlay' + (subtle ? ' subtle' : '');
   overlay.innerHTML = '<div class="results-loading-text">' + message + '</div><div class="results-loading-bar"><div class="results-loading-bar-fill"></div></div>';
   layout.appendChild(overlay);
   // Kick off the bar at 0 then smoothly advance
@@ -1435,8 +1437,8 @@ function findSweetSpot(options) {
   // Show loading indicators
   var summaryEl = document.getElementById('resultsSummary');
   if (summaryEl) summaryEl.innerHTML = '';
-  document.getElementById('resultsList').innerHTML = '';
-  showResultsLoading('Searching nearby venues...');
+  if (!options.preserveCustomPlaces) document.getElementById('resultsList').innerHTML = '';
+  showResultsLoading(options.preserveCustomPlaces ? 'Recalculating suggestions...' : 'Searching nearby venues...', options.preserveCustomPlaces);
 
   if (options.scrollToResults !== false) {
     setTimeout(() => {
@@ -1455,6 +1457,8 @@ function findSweetSpot(options) {
     setLoadingProgress(40);
     const venues_raw = await searchNearbyPlaces(center, aiKeywords);
     if (!venues_raw || venues_raw.length === 0) {
+      hideResultsLoading();
+      if (options.preserveCustomPlaces) showToast('Could not refresh suggestions. Your current places are unchanged.');
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Find the midway';
       return;
@@ -2172,7 +2176,7 @@ function renderVenueList() {
 
   const sortedVenues = getSortedVenues();
   const listHtml = sortedVenues.map((v, i) => `
-    <div class="venue-card ${i === 0 ? 'top-pick' : ''} ${v.id === (state.chosenVenue ? state.chosenVenue.id : getSortedVenues()[0].id) ? 'active' : ''}" data-vid="${v.id}" onclick="selectVenue(${v.id})">
+    <div class="venue-card ${i === 0 ? 'top-pick' : ''} ${v.id === (state.chosenVenue ? state.chosenVenue.id : sortedVenues[0].id) ? 'active mode-' + state.mode : ''}" data-vid="${v.id}" onclick="selectVenue(${v.id})" onmouseenter="highlightVenue(${v.id}, true)" onmouseleave="highlightVenue(${v.id}, false)">
       <div class="venue-photo-placeholder${v.photo ? ' photo-loading' : ''}" data-photo-vid="${v.id}" style="background:${FALLBACK_COLORS[v.icon] || '#6366F1'};cursor:pointer" onclick="event.stopPropagation(); ${v.placeId ? 'openGoogleMapsPlace(\'' + v.placeId + '\')' : v._isCustom ? 'openCustomPlace(' + v.lat + ',' + v.lng + ')' : 'bookVenue(\'' + encodeURIComponent(v.name) + '\')'}"><i class="fa-solid ${v.photo ? 'fa-spinner fa-spin' : v.icon}"></i></div>
       <div class="venue-rank">${getVenueLabel(v, sortedVenues)}</div>
       <div class="venue-info">
@@ -2275,7 +2279,8 @@ function selectVenue(vid) {
   _currentShareResultsKey = null;
   document.querySelectorAll('.venue-card').forEach(c => c.classList.remove('active'));
   const card = document.querySelector('.venue-card[data-vid="' + vid + '"]');
-  if (card) card.classList.add('active');
+  if (card) card.classList.add('active', 'mode-' + state.mode);
+  updateVenueMarkerStates();
   if (!state.chosenVenue) return;
   logVenueInteraction(state.chosenVenue, 'select', {
     venue_rating: state.chosenVenue.rating || null,
@@ -2299,6 +2304,29 @@ function selectVenue(vid) {
       renderMap(dest, distanceData);
     });
   }
+}
+
+function highlightVenue(vid, highlighted) {
+  const card = document.querySelector('.venue-card[data-vid="' + vid + '"]');
+  if (card) card.classList.toggle('map-highlight', highlighted);
+  const marker = state.venueMarkers[vid];
+  const markerEl = marker && marker.getElement();
+  const markerBadge = markerEl && markerEl.querySelector('.venue-marker');
+  if (markerBadge) markerBadge.classList.toggle('highlighted', highlighted);
+}
+
+function updateVenueMarkerStates() {
+  Object.keys(state.venueMarkers).forEach(function(vid) {
+    const markerEl = state.venueMarkers[vid].getElement();
+    const markerBadge = markerEl && markerEl.querySelector('.venue-marker');
+    if (markerBadge) markerBadge.classList.toggle('active', !!state.chosenVenue && String(state.chosenVenue.id) === vid);
+  });
+}
+
+function selectVenueFromMap(vid) {
+  selectVenue(vid);
+  const card = document.querySelector('.venue-card[data-vid="' + vid + '"]');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function removeCustomPlace(vid) {
@@ -2445,6 +2473,7 @@ function renderMap(center, distanceData, venueOverride) {
   }).addTo(state.map);
 
   state.markers = [];
+  state.venueMarkers = {};
   state.routeLayers = [];
 
   // Track currently highlighted route for dismissal
@@ -2567,15 +2596,23 @@ function renderMap(center, distanceData, venueOverride) {
   // Venue markers — use sorted order to match sidebar ranks
   var sortedVenues = venueOverride || getSortedVenues();
   sortedVenues.forEach((v, i) => {
+    const isActive = state.chosenVenue && state.chosenVenue.id === v.id;
     const vIcon = L.divIcon({
       className: '',
-      html: '<div class="venue-marker">' + getVenueLabel(v, sortedVenues) + '</div>',
+      html: '<div class="venue-marker' + (isActive ? ' active mode-' + state.mode : '') + '">' + getVenueLabel(v, sortedVenues) + '</div>',
       iconSize: [28, 28],
       iconAnchor: [14, 14],
     });
-    L.marker([v.lat, v.lng], { icon: vIcon })
+    const venueMarker = L.marker([v.lat, v.lng], { icon: vIcon })
       .addTo(state.map)
       .bindPopup('<strong>' + escapeHtml(v.name) + '</strong><br>' + escapeHtml(v.type) + (v.rating ? '<br>&#11088; ' + v.rating : ''));
+    venueMarker.on('mouseover', function() { highlightVenue(v.id, true); });
+    venueMarker.on('mouseout', function() { highlightVenue(v.id, false); });
+    venueMarker.on('click', function(e) {
+      L.DomEvent.stopPropagation(e);
+      selectVenueFromMap(v.id);
+    });
+    state.venueMarkers[v.id] = venueMarker;
   });
 
   // Fit bounds to all points
