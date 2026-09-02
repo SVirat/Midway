@@ -28,6 +28,7 @@ const state = {
   placesService: null, // google.maps.places.PlacesService
   _distanceData: [],
   _sortMode: 'closest',
+  _customPlacesOnly: false,
   _allVenues: [],
   meetingTime: null,    // Date object for departure_time
   customPlaces: [],     // user-added venues shown alongside suggested results
@@ -347,7 +348,7 @@ function initSession() {
   state.autocompletes = {};
   addLocationInput('You', true);
   state.myLocationId = locationCounter;
-  addLocationInput('Friend 1');
+  addLocationInput();
 
   updateFindButton();
 }
@@ -421,6 +422,19 @@ document.getElementById('resultsModeToggle').addEventListener('change', function
 // ---------- Location Inputs ----------
 let locationCounter = 0;
 
+function getDefaultPersonName(index) {
+  return index === 0 ? 'You' : 'Friend ' + String.fromCharCode(64 + index);
+}
+
+function getPersonAvatarLabel(name, index) {
+  if (index === 0 && name === 'You') return 'Y';
+  return isDefaultName(name) ? String.fromCharCode(64 + index) : name.charAt(0).toUpperCase();
+}
+
+function getLocationPlaceholder(name) {
+  return name === 'You' ? 'Enter your location...' : 'Add ' + name + "'s location...";
+}
+
 function addLocationInput(placeholder, showGeoBtn) {
   // Enforce group size limit: 4 free, 12 pro
   const maxLocations = (typeof isProUser === 'function' && isProUser()) ? 12 : 4;
@@ -438,9 +452,10 @@ function addLocationInput(placeholder, showGeoBtn) {
   locationCounter++;
   const id = locationCounter;
   const idx = document.getElementById('locationsList').children.length;
-  const name = placeholder || `Friend ${idx}`;
+  const requestedName = placeholder || getDefaultPersonName(idx);
+  const name = idx > 0 && isDefaultName(requestedName) ? getDefaultPersonName(idx) : requestedName;
   const color = AVATAR_COLORS[idx % AVATAR_COLORS.length];
-  const initials = name.charAt(0).toUpperCase();
+  const initials = getPersonAvatarLabel(name, idx);
 
   const row = document.createElement('div');
   row.className = 'location-row';
@@ -457,7 +472,7 @@ function addLocationInput(placeholder, showGeoBtn) {
     <div class="person-avatar" style="background:${color}" onclick="editPersonName(${id}, this)" title="Click to rename">${initials}</div>
     <input type="text" class="name-input" data-name-id="${id}" value="${name}"
            style="display:none" onblur="savePersonName(${id}, this)" onkeydown="if(event.key==='Enter')this.blur()" />
-    <input type="text" placeholder="${name === 'You' ? 'Enter your location...' : 'Enter ' + name + "'s location..."}"
+    <input type="text" placeholder="${getLocationPlaceholder(name)}"
            data-id="${id}" autocomplete="off" />
     ${geoButton}
     <button class="btn-remove" onclick="removeLocation(${id})" title="Remove">
@@ -766,12 +781,8 @@ function showNameHint(filledId) {
   if (!row) return;
   // Skip if the user already renamed this person
   const nameInput = row.querySelector('.name-input');
-  const defaultNames = ['You'];
-  const idx = Array.from(document.getElementById('locationsList').children)
-    .findIndex(r => r.dataset.id === String(filledId));
-  if (idx > 0) defaultNames.push('Friend ' + idx);
   const currentName = nameInput ? nameInput.value.trim() : '';
-  if (currentName && !defaultNames.includes(currentName)) return;
+  if (currentName && !isDefaultName(currentName)) return;
   nameHintFired = true;
   const avatar = row.querySelector('.person-avatar');
   if (!avatar || avatar.querySelector('.name-hint')) return;
@@ -827,7 +838,7 @@ function showYouHint() {
 function isDefaultName(name) {
   if (!name) return true;
   if (name === 'You' || name === 'Person') return true;
-  return /^Friend\s*\d*$/.test(name);
+  return /^Friend(?:\s*(?:\d+|[A-Z]))?$/.test(name);
 }
 
 function getPersonName(id) {
@@ -838,7 +849,7 @@ function getPersonName(id) {
   }
   const idx = Array.from(document.getElementById('locationsList').children)
     .findIndex(r => r.dataset.id === String(id));
-  return idx === 0 ? 'You' : 'Friend ' + idx;
+  return getDefaultPersonName(idx);
 }
 
 function editPersonName(id, avatar) {
@@ -859,12 +870,13 @@ function savePersonName(id, input) {
   // Update avatar initials and hover title
   const row = input.closest('.location-row');
   const avatar = row.querySelector('.person-avatar');
-  avatar.textContent = newName.charAt(0).toUpperCase();
+  const index = Array.from(document.querySelectorAll('.location-row:not(.remote-member)')).indexOf(row);
+  avatar.textContent = getPersonAvatarLabel(newName, index);
   avatar.title = isDefaultName(newName) ? 'Click to rename' : newName;
 
   // Update placeholder
   const locInput = row.querySelector('input[data-id]');
-  locInput.placeholder = newName === 'You' ? 'Enter your location...' : 'Enter ' + newName + "'s location...";
+  locInput.placeholder = getLocationPlaceholder(newName);
 
   // Update state
   const loc = state.locations.find(l => l.id === id);
@@ -884,10 +896,25 @@ function removeLocation(id) {
       row.remove();
       state.locations = state.locations.filter(l => l.id !== id);
       delete state.autocompletes[id];
+      renumberDefaultFriends();
       updateFindButton();
       if (state.groupId) broadcastMyPresence();
     }, 200);
   }
+}
+
+function renumberDefaultFriends() {
+  document.querySelectorAll('.location-row:not(.remote-member)').forEach(function(row, index) {
+    if (index === 0) return;
+    const nameInput = row.querySelector('.name-input');
+    if (!nameInput || !isDefaultName(nameInput.value.trim())) return;
+    const name = getDefaultPersonName(index);
+    nameInput.value = name;
+    row.querySelector('.person-avatar').textContent = getPersonAvatarLabel(name, index);
+    row.querySelector('input[data-id]').placeholder = getLocationPlaceholder(name);
+    const location = state.locations.find(function(item) { return item.id === Number(row.dataset.id); });
+    if (location) location.name = name;
+  });
 }
 
 // ---------- Vibe ----------
@@ -1042,6 +1069,19 @@ function getDisplayedVenues() {
   return state.results.concat(state.customPlaces);
 }
 
+function getVisibleVenues() {
+  const venues = getSortedVenues();
+  return state._customPlacesOnly ? venues.filter(function(venue) { return venue._isCustom; }) : venues;
+}
+
+function getNextVenueDisplayPosition() {
+  return getDisplayedVenues().reduce(function(maxPosition, venue) {
+    return Number.isFinite(venue._displayPosition)
+      ? Math.max(maxPosition, venue._displayPosition)
+      : maxPosition;
+  }, -1) + 1;
+}
+
 function attachCustomPlaceAutocomplete() {
   if (!state.googleReady) return;
   const input = document.getElementById('customPlaceInput');
@@ -1052,7 +1092,15 @@ function attachCustomPlaceAutocomplete() {
   if (bounds) options.bounds = bounds;
 
   const ac = new google.maps.places.Autocomplete(input, options);
+  input.addEventListener('keydown', function(event) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      input._autocompleteKeyboardSelection = true;
+    } else if (event.key !== 'Enter') {
+      input._autocompleteKeyboardSelection = false;
+    }
+  });
   ac.addListener('place_changed', () => {
+    input._autocompleteKeyboardSelection = false;
     logApiCall('google_maps', 'autocomplete', true, null, null);
     const place = ac.getPlace();
     if (!place.geometry) return;
@@ -1106,7 +1154,24 @@ function toggleCustomPlaceComposer() {
     attachCustomPlaceAutocomplete();
     applyLocationBiasToAutocompletes();
     requestLocationBias();
-    setTimeout(function() { input.focus(); }, 0);
+    composer.classList.remove('attention');
+    requestAnimationFrame(function() { composer.classList.add('attention'); });
+    clearTimeout(composer._attentionTimer);
+    composer._attentionTimer = setTimeout(function() {
+      composer.classList.remove('attention');
+    }, 2200);
+
+    const isMobile = window.matchMedia('(max-width: 600px)').matches;
+    if (isMobile) {
+      requestAnimationFrame(function() {
+        composer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      setTimeout(function() { input.focus({ preventScroll: true }); }, 350);
+    } else {
+      setTimeout(function() { input.focus(); }, 0);
+    }
+  } else {
+    composer.classList.remove('attention');
   }
 }
 
@@ -1198,6 +1263,7 @@ async function addCustomPlace() {
   const distanceData = await fetchRealDistances({ lat: dest.lat, lng: dest.lng });
   const venue = {
     id: state.nextCustomPlaceId--,
+    _displayPosition: getNextVenueDisplayPosition(),
     name: dest.name,
     address: dest.address,
     vicinity: dest.address,
@@ -1267,7 +1333,7 @@ function renderReverseResults(dest, distanceData) {
   const rows = sorted.map((d, i) => `
     <div class="reverse-person-card ${i === 0 ? 'closest' : ''}">
       <div class="reverse-rank">${i + 1}</div>
-      <div class="person-avatar" style="background:${d._color}">${escapeHtml(d.loc.name.charAt(0).toUpperCase())}</div>
+      <div class="person-avatar" style="background:${d._color}">${escapeHtml(getPersonAvatarLabel(d.loc.name, distanceData.indexOf(d)))}</div>
       <div class="reverse-person-info">
         <div class="reverse-person-name">${escapeHtml(d.loc.name)}${i === 0 ? ' <span class="reverse-tag">Closest</span>' : ''}</div>
         <div class="reverse-person-addr">${escapeHtml(d.loc.address || '')}</div>
@@ -1390,7 +1456,10 @@ function findSweetSpot(options) {
     : null;
 
   state._sortMode = 'closest';
-  if (!options.preserveCustomPlaces) state.customPlaces = [];
+  if (!options.preserveCustomPlaces) {
+    state.customPlaces = [];
+    state._customPlacesOnly = false;
+  }
   state.customPlaceDraft = null;
   if (!options.preserveCustomPlaces) state.nextCustomPlaceId = -1;
   state.reverseActive = false;
@@ -1501,6 +1570,7 @@ function findSweetSpot(options) {
     state._allVenues = venues;
     const venueLimit = (typeof isProUser === 'function' && isProUser()) ? 10 : 5;
     state.results = venues.slice(0, venueLimit);
+    state.results.forEach(function(venue, index) { venue._displayPosition = index; });
     state.chosenVenue = preservedCustomSelection || state.results[0] || state.customPlaces[0] || null;
     state._resultsLocationCount = state.locations.length;
 
@@ -2168,13 +2238,14 @@ function renderVenueList() {
 
   const sortHtml = `
     <div class="sort-bar">
-      <button class="sort-btn ${state._sortMode === 'closest' ? 'active' : ''}" onclick="sortVenues('closest')">Closest</button>
-      <button class="sort-btn ${state._sortMode === 'rating' ? 'active' : ''}" onclick="sortVenues('rating')">Highest Rated</button>
-      <button class="sort-btn ${state._sortMode === 'cheapest' ? 'active' : ''}" onclick="sortVenues('cheapest')">Cheapest</button>
+      <button class="sort-btn ${!state._customPlacesOnly && state._sortMode === 'closest' ? 'active' : ''}" onclick="sortVenues('closest')">Closest</button>
+      <button class="sort-btn ${!state._customPlacesOnly && state._sortMode === 'rating' ? 'active' : ''}" onclick="sortVenues('rating')">Highest Rated</button>
+      <button class="sort-btn ${!state._customPlacesOnly && state._sortMode === 'cheapest' ? 'active' : ''}" onclick="sortVenues('cheapest')">Cheapest</button>
+      ${state.customPlaces.length > 0 ? '<button class="sort-btn custom-only-btn ' + (state._customPlacesOnly ? 'active' : '') + '" aria-pressed="' + state._customPlacesOnly + '" onclick="toggleCustomPlacesOnly()"><i class="fa-solid fa-location-dot"></i> Your places only</button>' : ''}
     </div>
   `;
 
-  const sortedVenues = getSortedVenues();
+  const sortedVenues = getVisibleVenues();
   const listHtml = sortedVenues.map((v, i) => `
     <div class="venue-card ${i === 0 ? 'top-pick' : ''} ${v.id === (state.chosenVenue ? state.chosenVenue.id : sortedVenues[0].id) ? 'active mode-' + state.mode : ''}" data-vid="${v.id}" onclick="selectVenue(${v.id})" onmouseenter="highlightVenue(${v.id}, true)" onmouseleave="highlightVenue(${v.id}, false)">
       <div class="venue-photo-placeholder${v.photo ? ' photo-loading' : ''}" data-photo-vid="${v.id}" style="background:${FALLBACK_COLORS[v.icon] || '#6366F1'};cursor:pointer" onclick="event.stopPropagation(); ${v.placeId ? 'openGoogleMapsPlace(\'' + v.placeId + '\')' : v._isCustom ? 'openCustomPlace(' + v.lat + ',' + v.lng + ')' : 'bookVenue(\'' + encodeURIComponent(v.name) + '\')'}"><i class="fa-solid ${v.photo ? 'fa-spinner fa-spin' : v.icon}"></i></div>
@@ -2205,7 +2276,7 @@ function renderVenueList() {
     </div>
   `).join('');
 
-  const canLoadMore = state._allVenues.length > state.results.length;
+  const canLoadMore = !state._customPlacesOnly && state._allVenues.length > state.results.length;
   const moreBtn = canLoadMore ? `
     <div class="find-more-wrap">
       <button class="btn-find-more" id="findMoreBtn" onclick="loadMoreOptions()">
@@ -2219,12 +2290,12 @@ function renderVenueList() {
   // Toggle expanded mode: scroll only when showing more than 5
   const layout = document.querySelector('.results-layout-inline');
   if (layout) {
-    if (getDisplayedVenues().length > 5) layout.classList.add('expanded');
+    if (sortedVenues.length > 5) layout.classList.add('expanded');
     else layout.classList.remove('expanded');
   }
 
   // Load photos via DOM
-  getSortedVenues().forEach(v => {
+  sortedVenues.forEach(v => {
     var photoUrl = null;
     if (v._photosObj) {
       try { photoUrl = v._photosObj.getUrl({ maxWidth: 200 }); } catch(e) {}
@@ -2333,6 +2404,10 @@ function removeCustomPlace(vid) {
   const removed = state.customPlaces.find(function(venue) { return venue.id === vid; });
   if (!removed) return;
   state.customPlaces = state.customPlaces.filter(function(venue) { return venue.id !== vid; });
+  if (state.customPlaces.length === 0) state._customPlacesOnly = false;
+  getDisplayedVenues().forEach(function(venue) {
+    if (venue._displayPosition > removed._displayPosition) venue._displayPosition--;
+  });
   _currentShareCode = null;
   _currentShareResultsKey = null;
   trackEvent('custom_place_removed', { name: removed.name, customPlaceCount: state.customPlaces.length });
@@ -2354,8 +2429,11 @@ function removeCustomPlace(vid) {
 
 // ---------- Venue Sorting ----------
 function getSortedVenues() {
-  const customPlaces = state.customPlaces.slice().reverse();
   const venues = state.results.slice();
+  let nextPosition = getNextVenueDisplayPosition();
+  venues.forEach(function(venue) {
+    if (!Number.isFinite(venue._displayPosition)) venue._displayPosition = nextPosition++;
+  });
   switch (state._sortMode) {
     case 'rating':
       venues.sort((a, b) => b.rating - a.rating);
@@ -2371,21 +2449,35 @@ function getSortedVenues() {
       venues.sort((a, b) => a._score - b._score);
       break;
   }
-  return customPlaces.concat(venues);
+  return state.customPlaces.slice().reverse().concat(venues);
 }
 
 function getVenueLabel(venue, orderedVenues) {
-  const sameTypeVenues = orderedVenues.filter(function(item) {
-    return !!item._isCustom === !!venue._isCustom;
-  });
-  const index = sameTypeVenues.findIndex(function(item) { return item.id === venue.id; });
-  return venue._isCustom ? String.fromCharCode(65 + index) : String(index + 1);
+  if (Number.isFinite(venue._displayPosition)) return String(venue._displayPosition + 1);
+  const index = orderedVenues.findIndex(function(item) { return item.id === venue.id; });
+  return String(index + 1);
 }
 
 function sortVenues(mode) {
   state._sortMode = mode;
+  state._customPlacesOnly = false;
   renderVenueList();
   // Re-render map so venue marker ranks match the new sidebar order
+  if (state.chosenVenue && state._distanceData) {
+    renderMap({ lat: state.chosenVenue.lat, lng: state.chosenVenue.lng }, state._distanceData);
+  }
+}
+
+function toggleCustomPlacesOnly() {
+  if (state.customPlaces.length === 0) return;
+  state._customPlacesOnly = !state._customPlacesOnly;
+  renderVenueList();
+
+  if (state._customPlacesOnly && (!state.chosenVenue || !state.chosenVenue._isCustom)) {
+    selectVenue(state.customPlaces[state.customPlaces.length - 1].id);
+    return;
+  }
+
   if (state.chosenVenue && state._distanceData) {
     renderMap({ lat: state.chosenVenue.lat, lng: state.chosenVenue.lng }, state._distanceData);
   }
@@ -2565,7 +2657,7 @@ function renderMap(center, distanceData, venueOverride) {
     // Person marker
     const icon = L.divIcon({
       className: '',
-      html: '<div class="custom-marker" style="background:' + color + '">' + escapeHtml(d.loc.name.charAt(0)) + '</div>',
+      html: '<div class="custom-marker" style="background:' + color + '">' + escapeHtml(getPersonAvatarLabel(d.loc.name, i)) + '</div>',
       iconSize: [36, 36],
       iconAnchor: [18, 18],
     });
@@ -2594,7 +2686,7 @@ function renderMap(center, distanceData, venueOverride) {
   });
 
   // Venue markers — use sorted order to match sidebar ranks
-  var sortedVenues = venueOverride || getSortedVenues();
+  var sortedVenues = venueOverride || getVisibleVenues();
   sortedVenues.forEach((v, i) => {
     const isActive = state.chosenVenue && state.chosenVenue.id === v.id;
     const vIcon = L.divIcon({
@@ -2903,7 +2995,7 @@ function _populateReverseShareCard(dest) {
   const peopleRows = sorted.map((d, i) => {
     const color = AVATAR_COLORS[dd.indexOf(d) % AVATAR_COLORS.length];
     return '<div class="fc-rev-person">' +
-      '<span class="fc-rev-avatar" style="background:' + color + '">' + escapeHtml(d.loc.name.charAt(0).toUpperCase()) + '</span>' +
+      '<span class="fc-rev-avatar" style="background:' + color + '">' + escapeHtml(getPersonAvatarLabel(d.loc.name, dd.indexOf(d))) + '</span>' +
       '<span class="fc-rev-name">' + escapeHtml(d.loc.name) + '</span>' +
       '<span class="fc-rev-dist">' + d.distKm.toFixed(1) + ' km' + (d.durationMin !== null ? ' · ' + d.durationMin + ' min' : '') + '</span>' +
       '</div>';
@@ -2970,7 +3062,7 @@ function buildShareSnapshot() {
     };
   }
 
-  var displayedVenues = getDisplayedVenues();
+  var displayedVenues = getSortedVenues();
   var v = state.chosenVenue || (displayedVenues[0] || null);
   return {
     locations: state.locations.map(function(l) {
@@ -2990,6 +3082,7 @@ function buildShareSnapshot() {
         _realDists: rv._realDists || null,
         _realTimes: rv._realTimes || null,
         _isCustom: !!rv._isCustom,
+        _displayPosition: rv._displayPosition ?? null,
       };
     }),
     chosenVenueIndex: v ? displayedVenues.findIndex(function(r) { return r === v; }) : 0,
@@ -3254,6 +3347,16 @@ async function loadSharedSession() {
   });
   state.results = restoredVenues.filter(function(rv) { return !rv._isCustom; });
   state.customPlaces = restoredVenues.filter(function(rv) { return rv._isCustom; });
+  state.results.forEach(function(rv, index) {
+    if (rv._displayPosition === null || rv._displayPosition === undefined) {
+      rv._displayPosition = index;
+    }
+  });
+  state.customPlaces.forEach(function(rv, index) {
+    if (rv._displayPosition === null || rv._displayPosition === undefined) {
+      rv._displayPosition = state.results.length + index;
+    }
+  });
   state.nextCustomPlaceId = nextCustomId;
   state._allVenues = state.results.slice();
   state.chosenVenue = restoredVenues[snap.chosenVenueIndex || 0] || restoredVenues[0];
@@ -3655,6 +3758,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (e.key !== 'Enter') return;
     var active = document.activeElement;
     if (active && active.id === 'customPlaceInput') {
+      if (active._autocompleteKeyboardSelection) {
+        active._autocompleteKeyboardSelection = false;
+        return;
+      }
       var customPlaceAddBtn = document.getElementById('customPlaceAddBtn');
       if (customPlaceAddBtn && !customPlaceAddBtn.disabled) {
         e.preventDefault();

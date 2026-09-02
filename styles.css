@@ -1080,10 +1080,33 @@ a {
   gap: var(--space-sm);
   width: 100%;
   margin-bottom: var(--space-sm);
+  border-radius: var(--radius-sm);
 }
 
 .custom-place-composer[hidden] {
   display: none;
+}
+
+.custom-place-composer.attention {
+  animation: custom-place-attention 2.2s ease-out;
+}
+
+@keyframes custom-place-attention {
+  0%, 30% {
+    outline: 3px solid color-mix(in srgb, var(--primary) 65%, transparent);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 18%, transparent);
+  }
+  100% {
+    outline: 3px solid transparent;
+    box-shadow: 0 0 0 14px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .custom-place-composer.attention {
+    animation: none;
+    outline: 3px solid var(--primary);
+  }
 }
 
 .custom-place-input-wrap {
