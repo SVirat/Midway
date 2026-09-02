@@ -20,13 +20,18 @@ const state = {
   routeLayers: [],     // L.polyline references for routes
   googleReady: false,
   autocompletes: {},   // id -> google.maps.places.Autocomplete
+  customPlaceAutocomplete: null,
   userLatLng: null,    // browser geolocation for biasing
+  searchCenter: null,  // exact center used by the latest nearby search
   directionsService: null,
   placesService: null, // google.maps.places.PlacesService
   _distanceData: [],
   _sortMode: 'closest',
   _allVenues: [],
   meetingTime: null,    // Date object for departure_time
+  customPlaces: [],     // user-added venues shown alongside suggested results
+  customPlaceDraft: null,
+  nextCustomPlaceId: -1,
   // Group / Invite
   groupId: null,
   groupCreatedAt: null,
@@ -34,8 +39,8 @@ const state = {
   groupMembers: {},      // memberId -> { name, address, lat, lng }
   memberId: null,
   myLocationId: null,    // id of first local location ("You")
-  reverseDest: null,     // { name, address, lat, lng } chosen for reverse search
-  reverseActive: false,  // true when the current results view is a reverse search
+  reverseDest: null,     // legacy shared-session support
+  reverseActive: false,  // legacy shared-session support
 };
 
 // Client-side route cache: key = "lat1,lng1->lat2,lng2" => route result
@@ -67,7 +72,7 @@ function routeCacheKey(origin, dest) {
 // ---------- Client-side Google Maps Rate Limiter ----------
 const _gmapsRateLimit = {
   // Per-service limits (requests per minute)
-  limits: { geocode: 30, nearby_search: 10, directions: 30, place_details: 10 },
+  limits: { geocode: 30, nearby_search: 10, directions: 120, place_details: 10 },
   buckets: {},  // service -> [timestamps]
   check(service) {
     const max = this.limits[service] || 20;
@@ -262,23 +267,47 @@ function onGoogleMapsReady() {
     attachGoogleAutocomplete(input);
   });
 
-  // Attach autocomplete to the reverse-search venue input
-  attachReverseAutocomplete();
+  attachCustomPlaceAutocomplete();
 }
 
 // Lazily request browser location for autocomplete biasing (only on first interaction)
 let locationBiasRequested = false;
+function getLocationBiasBounds() {
+  let lat;
+  let lng;
+  if (state.searchCenter) {
+    lat = state.searchCenter.lat;
+    lng = state.searchCenter.lng;
+  } else if (state.userLatLng) {
+    lat = state.userLatLng.lat();
+    lng = state.userLatLng.lng();
+  } else if (state.locations[0] && Number.isFinite(state.locations[0].lat) && Number.isFinite(state.locations[0].lng)) {
+    lat = state.locations[0].lat;
+    lng = state.locations[0].lng;
+  } else {
+    return null;
+  }
+
+  return new google.maps.LatLngBounds(
+    new google.maps.LatLng(lat - 0.5, lng - 0.5),
+    new google.maps.LatLng(lat + 0.5, lng + 0.5)
+  );
+}
+
+function applyLocationBiasToAutocompletes() {
+  const bounds = getLocationBiasBounds();
+  if (!bounds) return;
+  Object.values(state.autocompletes).forEach(function(ac) { ac.setBounds(bounds); });
+  if (state.customPlaceAutocomplete) state.customPlaceAutocomplete.setBounds(bounds);
+}
+
 function requestLocationBias() {
   if (locationBiasRequested || !state.googleReady || !navigator.geolocation) return;
   locationBiasRequested = true;
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       state.userLatLng = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-      const bounds = new google.maps.LatLngBounds(
-        new google.maps.LatLng(pos.coords.latitude - 0.5, pos.coords.longitude - 0.5),
-        new google.maps.LatLng(pos.coords.latitude + 0.5, pos.coords.longitude + 0.5)
-      );
-      Object.values(state.autocompletes).forEach(ac => ac.setBounds(bounds));
+      applyLocationBiasToAutocompletes();
     },
     () => {} // silently ignore denial
   );
@@ -291,13 +320,8 @@ function attachGoogleAutocomplete(input) {
   if (state.autocompletes[id]) return;
 
   const options = { types: ['geocode', 'establishment'] };
-  // Bias to user's location if we have it
-  if (state.userLatLng) {
-    options.bounds = new google.maps.LatLngBounds(
-      new google.maps.LatLng(state.userLatLng.lat() - 0.5, state.userLatLng.lng() - 0.5),
-      new google.maps.LatLng(state.userLatLng.lat() + 0.5, state.userLatLng.lng() + 0.5)
-    );
-  }
+  const bounds = getLocationBiasBounds();
+  if (bounds) options.bounds = bounds;
 
   const ac = new google.maps.places.Autocomplete(input, options);
   ac.addListener('place_changed', () => {
@@ -347,14 +371,20 @@ function updateModeVisibility() {
     modeVisibilityUpdateQueued = false;
     const container = document.querySelector('.mode-toggle-container');
     const toggle = document.getElementById('modeToggle');
+    const resultsToggleWrap = document.getElementById('resultsModeToggleWrap');
+    const resultsToggle = document.getElementById('resultsModeToggle');
     const desc = document.getElementById('modeDescription');
-    const participantCount = document.querySelectorAll('#locationsList .location-row').length;
+    const participantCount = state.locations.length;
     const shouldShow = participantCount >= 3;
 
     if (container) container.hidden = !shouldShow;
+    if (resultsToggleWrap) resultsToggleWrap.hidden = !shouldShow;
+    if (toggle) toggle.checked = state.mode === 'eco';
+    if (resultsToggle) resultsToggle.checked = state.mode === 'eco';
     if (!shouldShow) {
       state.mode = 'fairness';
       if (toggle) toggle.checked = false;
+      if (resultsToggle) resultsToggle.checked = false;
       if (desc) desc.innerHTML = '<strong>Fair:</strong> No one has to travel too far';
     }
   });
@@ -362,6 +392,8 @@ function updateModeVisibility() {
 
 document.getElementById('modeToggle').addEventListener('change', function () {
   state.mode = this.checked ? 'eco' : 'fairness';
+  const resultsToggle = document.getElementById('resultsModeToggle');
+  if (resultsToggle) resultsToggle.checked = this.checked;
   const desc = document.getElementById('modeDescription');
   if (state.mode === 'eco') {
     desc.innerHTML = '<strong>Eco:</strong> Minimize total distance overall';
@@ -369,6 +401,20 @@ document.getElementById('modeToggle').addEventListener('change', function () {
     desc.innerHTML = '<strong>Fair:</strong> No one has to travel too far';
   }
   trackEvent('mode_toggle', { mode: state.mode });
+});
+
+document.getElementById('resultsModeToggle').addEventListener('change', function () {
+  state.mode = this.checked ? 'eco' : 'fairness';
+  const setupToggle = document.getElementById('modeToggle');
+  if (setupToggle) setupToggle.checked = this.checked;
+  const desc = document.getElementById('modeDescription');
+  if (desc) {
+    desc.innerHTML = state.mode === 'eco'
+      ? '<strong>Eco:</strong> Minimize total distance overall'
+      : '<strong>Fair:</strong> No one has to travel too far';
+  }
+  trackEvent('results_mode_toggle', { mode: state.mode });
+  findSweetSpot({ preserveCustomPlaces: true, preserveCustomSelection: true, scrollToResults: false });
 });
 
 // ---------- Location Inputs ----------
@@ -629,6 +675,7 @@ function geolocateUser(id, btn) {
       state.userLatLng = state.googleReady
         ? new google.maps.LatLng(lat, lng)
         : { lat: () => lat, lng: () => lng };
+      if (state.googleReady) applyLocationBiasToAutocompletes();
       reverseGeocode(id, lat, lng);
     },
     () => {
@@ -981,23 +1028,26 @@ function updateFindButton() {
   const btn = document.getElementById('findBtn');
   btn.disabled = state.locations.length < 2;
   updateModeVisibility();
-  updateReverseButton();
+  updateCustomPlaceButton();
 }
 
-// ---------- Reverse Search ----------
-// Attach Google Places Autocomplete to the reverse-search venue input
-function attachReverseAutocomplete() {
+// ---------- Custom Places ----------
+function getCustomPlaceLimit() {
+  return (typeof isProUser === 'function' && isProUser()) ? 6 : 3;
+}
+
+function getDisplayedVenues() {
+  return state.results.concat(state.customPlaces);
+}
+
+function attachCustomPlaceAutocomplete() {
   if (!state.googleReady) return;
-  const input = document.getElementById('reverseVenueInput');
-  if (!input || input._reverseAcAttached) return;
+  const input = document.getElementById('customPlaceInput');
+  if (!input || input._customPlaceAcAttached) return;
 
   const options = { types: ['geocode', 'establishment'] };
-  if (state.userLatLng) {
-    options.bounds = new google.maps.LatLngBounds(
-      new google.maps.LatLng(state.userLatLng.lat() - 0.5, state.userLatLng.lng() - 0.5),
-      new google.maps.LatLng(state.userLatLng.lat() + 0.5, state.userLatLng.lng() + 0.5)
-    );
-  }
+  const bounds = getLocationBiasBounds();
+  if (bounds) options.bounds = bounds;
 
   const ac = new google.maps.places.Autocomplete(input, options);
   ac.addListener('place_changed', () => {
@@ -1008,7 +1058,7 @@ function attachReverseAutocomplete() {
     if (place.photos && place.photos[0]) {
       try { photoUrl = place.photos[0].getUrl({ maxWidth: 400 }); } catch (e) {}
     }
-    state.reverseDest = {
+    state.customPlaceDraft = {
       name: place.name || place.formatted_address || input.value,
       address: place.formatted_address || place.name || input.value,
       lat: place.geometry.location.lat(),
@@ -1016,27 +1066,46 @@ function attachReverseAutocomplete() {
       placeId: place.place_id || null,
       photoUrl: photoUrl,
     };
-    input.value = state.reverseDest.address;
-    updateReverseButton();
+    input.value = state.customPlaceDraft.address;
+    updateCustomPlaceButton();
   });
-  input._reverseAcAttached = true;
+  state.customPlaceAutocomplete = ac;
+  input._customPlaceAcAttached = true;
 }
 
-// Fired on every keystroke in the reverse input — invalidate any previously
-// picked place so we re-resolve on submit.
-function onReverseInput() {
-  state.reverseDest = null;
+function onCustomPlaceInput() {
+  state.customPlaceDraft = null;
   requestLocationBias();
-  updateReverseButton();
+  updateCustomPlaceButton();
 }
 
-function updateReverseButton() {
-  const btn = document.getElementById('reverseBtn');
+function updateCustomPlaceButton() {
+  const btn = document.getElementById('customPlaceAddBtn');
   if (!btn) return;
-  const input = document.getElementById('reverseVenueInput');
+  const input = document.getElementById('customPlaceInput');
   const hasText = !!(input && input.value.trim());
-  const hasPeople = state.locations.length >= 1;
-  btn.disabled = !(hasText && hasPeople);
+  btn.disabled = !(hasText && state.locations.length >= 1);
+}
+
+function toggleCustomPlaceComposer() {
+  if (state.customPlaces.length >= getCustomPlaceLimit()) {
+    if (typeof isProUser === 'function' && !isProUser() && typeof showUpgradeModal === 'function') {
+      showUpgradeModal();
+    } else {
+      showToast('You can add up to 6 custom places.');
+    }
+    return;
+  }
+
+  const composer = document.getElementById('customPlaceComposer');
+  const input = document.getElementById('customPlaceInput');
+  composer.hidden = !composer.hidden;
+  if (!composer.hidden) {
+    attachCustomPlaceAutocomplete();
+    applyLocationBiasToAutocompletes();
+    requestLocationBias();
+    setTimeout(function() { input.focus(); }, 0);
+  }
 }
 
 // Geocode a free-text destination when the user didn't pick from autocomplete
@@ -1058,7 +1127,10 @@ function geocodeReverseDest(text) {
     }
     const geocoder = new google.maps.Geocoder();
     const _gcStart = Date.now();
-    geocoder.geocode({ address: text }, (results, status) => {
+    const request = { address: text };
+    const bounds = getLocationBiasBounds();
+    if (bounds) request.bounds = bounds;
+    geocoder.geocode(request, (results, status) => {
       if (status === 'OK') _gmapsMonthlyQuota.record('geocode');
       logApiCall('google_maps', 'geocode', status === 'OK', status !== 'OK' ? status : null, Date.now() - _gcStart);
       if (status === 'OK' && results[0]) {
@@ -1076,82 +1148,87 @@ function geocodeReverseDest(text) {
   });
 }
 
-async function runReverseSearch() {
-  if (state.locations.length < 1) {
-    showToast('Add at least one person\u2019s location first.');
+async function addCustomPlace() {
+  const limit = getCustomPlaceLimit();
+  if (state.customPlaces.length >= limit) {
+    if (typeof isProUser === 'function' && !isProUser() && typeof showUpgradeModal === 'function') {
+      showUpgradeModal();
+    } else {
+      showToast('You can add up to 6 custom places.');
+    }
     return;
   }
 
-  const input = document.getElementById('reverseVenueInput');
-  const btn = document.getElementById('reverseBtn');
+  const input = document.getElementById('customPlaceInput');
+  const btn = document.getElementById('customPlaceAddBtn');
   const origLabel = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Calculating...';
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
 
-  // Resolve the destination (use the picked place, or geocode the typed text)
-  let dest = state.reverseDest;
+  let dest = state.customPlaceDraft;
   if (!dest) {
     const text = input ? input.value.trim() : '';
     if (!text) {
-      btn.disabled = false;
       btn.innerHTML = origLabel;
-      updateReverseButton();
+      updateCustomPlaceButton();
       return;
     }
     dest = await geocodeReverseDest(text);
     if (!dest) {
       showToast('Could not find that location. Try picking a suggestion.');
-      btn.disabled = false;
       btn.innerHTML = origLabel;
-      updateReverseButton();
+      updateCustomPlaceButton();
       return;
     }
-    state.reverseDest = dest;
-    if (input) input.value = dest.address;
   }
 
-  trackEvent('reverse_search', {
-    destination: { name: dest.name, address: dest.address, lat: dest.lat, lng: dest.lng },
-    locationCount: state.locations.length,
+  const duplicate = getDisplayedVenues().some(function(venue) {
+    return (dest.placeId && venue.placeId === dest.placeId) ||
+      (!dest.placeId && venue.lat === dest.lat && venue.lng === dest.lng);
   });
-
-  // Mark the current results view as a reverse search and reset share cache
-  state.reverseActive = true;
-  _currentShareCode = null;
-  _currentShareResultsKey = null;
-
-  // Show results section
-  const section = document.getElementById('resultsSection');
-  section.style.display = 'block';
-  document.getElementById('shareBtn').style.display = '';
-
-  document.getElementById('resultsList').innerHTML = '';
-  const summaryEl = document.getElementById('resultsSummary');
-  if (summaryEl) summaryEl.innerHTML = '';
-  showResultsLoading('Calculating real driving routes...');
-  setLoadingProgress(40);
-
-  setTimeout(() => {
-    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 100);
+  if (duplicate) {
+    showToast('That place is already in the results.');
+    btn.innerHTML = origLabel;
+    updateCustomPlaceButton();
+    return;
+  }
 
   const distanceData = await fetchRealDistances({ lat: dest.lat, lng: dest.lng });
-
-  // Best-effort: fetch a venue photo for the destination if we don't have one
-  await enrichReverseDestPhoto(dest);
-
-  setLoadingProgress(90);
-  hideResultsLoading();
-
+  const venue = {
+    id: state.nextCustomPlaceId--,
+    name: dest.name,
+    address: dest.address,
+    vicinity: dest.address,
+    lat: dest.lat,
+    lng: dest.lng,
+    placeId: dest.placeId || null,
+    photo: dest.photoUrl || null,
+    type: 'Place',
+    icon: 'fa-location-dot',
+    rating: null,
+    userRatingsTotal: null,
+    price: '',
+    _isCustom: true,
+    _routeData: distanceData,
+    _realDists: distanceData.map(function(d) { return d.distKm; }),
+    _realTimes: distanceData.map(function(d) { return d.durationMin; }),
+  };
+  rankVenuesByMode([venue]);
+  document.getElementById('customPlaceComposer').hidden = true;
+  const previousCardPositions = captureVenueCardPositions();
+  state.customPlaces.push(venue);
+  state.chosenVenue = venue;
   state._distanceData = distanceData;
-  renderReverseResults(dest, distanceData);
-  renderMap({ lat: dest.lat, lng: dest.lng }, distanceData, [
-    { id: 1, lat: dest.lat, lng: dest.lng, name: dest.name, type: 'Your destination', rating: null },
-  ]);
-
-  btn.disabled = false;
+  state.customPlaceDraft = null;
+  input.value = '';
+  _currentShareCode = null;
+  _currentShareResultsKey = null;
+  renderVenueList();
+  animateVenueInsertion(venue.id, previousCardPositions);
+  renderMap({ lat: venue.lat, lng: venue.lng }, distanceData);
+  trackEvent('custom_place_added', { name: venue.name, placeId: venue.placeId, customPlaceCount: state.customPlaces.length });
   btn.innerHTML = origLabel;
-  updateReverseButton();
+  updateCustomPlaceButton();
 }
 
 function renderReverseResults(dest, distanceData) {
@@ -1302,10 +1379,18 @@ function updateMeetingTime() {
   }
 }
 
-function findSweetSpot() {
+function findSweetSpot(options) {
   if (state.locations.length < 2) return;
 
+  options = options || {};
+  const preservedCustomSelection = options.preserveCustomSelection && state.chosenVenue && state.chosenVenue._isCustom
+    ? state.chosenVenue
+    : null;
+
   state._sortMode = 'closest';
+  if (!options.preserveCustomPlaces) state.customPlaces = [];
+  state.customPlaceDraft = null;
+  if (!options.preserveCustomPlaces) state.nextCustomPlaceId = -1;
   state.reverseActive = false;
   _currentShareCode = null;
   _currentShareResultsKey = null;
@@ -1336,6 +1421,7 @@ function findSweetSpot() {
   });
 
   const center = computeCenter(state.locations, state.mode);
+  state.searchCenter = { lat: center.lat, lng: center.lng };
 
   // Show results section
   const section = document.getElementById('resultsSection');
@@ -1352,9 +1438,11 @@ function findSweetSpot() {
   document.getElementById('resultsList').innerHTML = '';
   showResultsLoading('Searching nearby venues...');
 
-  setTimeout(() => {
-    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 100);
+  if (options.scrollToResults !== false) {
+    setTimeout(() => {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }
 
   // Step 1: If user typed a free-form AI prompt, extract smart keywords first
   const aiPromptText = document.getElementById('vibeInput').value.trim();
@@ -1409,7 +1497,7 @@ function findSweetSpot() {
     state._allVenues = venues;
     const venueLimit = (typeof isProUser === 'function' && isProUser()) ? 10 : 5;
     state.results = venues.slice(0, venueLimit);
-    state.chosenVenue = state.results[0] || null;
+    state.chosenVenue = preservedCustomSelection || state.results[0] || state.customPlaces[0] || null;
     state._resultsLocationCount = state.locations.length;
 
     // Step 6: Use the already-fetched route data for #1
@@ -1851,7 +1939,11 @@ function generateFallbackVenues(center) {
 function fetchOneRoute(origin, dest, retries) {
   retries = retries || 0;
   const cKey = routeCacheKey(origin, dest);
-  if (_routeCache[cKey]) return Promise.resolve(_routeCache[cKey]);
+  const cachedRoute = _routeCache[cKey];
+  if (cachedRoute && cachedRoute.durationMin !== null && cachedRoute.routePoints && cachedRoute.routePoints.length > 2) {
+    return Promise.resolve(cachedRoute);
+  }
+  if (cachedRoute) delete _routeCache[cKey];
   return new Promise((res) => {
     if (!state.googleReady || !state.directionsService) {
       const result = {
@@ -1859,7 +1951,6 @@ function fetchOneRoute(origin, dest, retries) {
         durationMin: null,
         routePoints: [[origin.lat, origin.lng], [dest.lat, dest.lng]],
       };
-      _routeCache[cKey] = result;
       res(result);
       return;
     }
@@ -1870,7 +1961,6 @@ function fetchOneRoute(origin, dest, retries) {
         durationMin: null,
         routePoints: [[origin.lat, origin.lng], [dest.lat, dest.lng]],
       };
-      _routeCache[cKey] = fallback;
       res(fallback);
       return;
     }
@@ -1907,7 +1997,7 @@ function fetchOneRoute(origin, dest, retries) {
         _routeCache[cKey] = routeResult;
         _persistRouteCache();
         res(routeResult);
-      } else if (status === 'OVER_QUERY_LIMIT' && retries < 3) {
+      } else if ((status === 'OVER_QUERY_LIMIT' || status === 'UNKNOWN_ERROR') && retries < 3) {
         setTimeout(function() {
           fetchOneRoute(origin, dest, retries + 1).then(res);
         }, 1000 * (retries + 1));
@@ -1917,7 +2007,6 @@ function fetchOneRoute(origin, dest, retries) {
           durationMin: null,
           routePoints: [[origin.lat, origin.lng], [dest.lat, dest.lng]],
         };
-        _routeCache[cKey] = fallback;
         res(fallback);
       }
     });
@@ -2033,8 +2122,41 @@ function haversine(lat1, lon1, lat2, lon2) {
 
 
 // ---------- Render Venue List ----------
+function captureVenueCardPositions() {
+  const positions = {};
+  document.querySelectorAll('.venue-card').forEach(function(card) {
+    positions[card.dataset.vid] = card.getBoundingClientRect().top;
+  });
+  return positions;
+}
+
+function animateVenueInsertion(newVenueId, previousPositions) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  requestAnimationFrame(function() {
+    document.querySelectorAll('.venue-card').forEach(function(card) {
+      if (Number(card.dataset.vid) === newVenueId) {
+        card.animate([
+          { opacity: 0, transform: 'translateY(-14px)' },
+          { opacity: 1, transform: 'translateY(0)' },
+        ], { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+        return;
+      }
+
+      const previousTop = previousPositions[card.dataset.vid];
+      if (previousTop === undefined) return;
+      const offset = previousTop - card.getBoundingClientRect().top;
+      if (Math.abs(offset) < 1) return;
+      card.animate([
+        { transform: 'translateY(' + offset + 'px)' },
+        { transform: 'translateY(0)' },
+      ], { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+    });
+  });
+}
+
 function renderVenueList() {
-  if (state.results.length === 0) {
+  if (getDisplayedVenues().length === 0) {
     document.getElementById('resultsList').innerHTML =
       '<div style="text-align:center;padding:24px;color:#9CA3AF;">No venues found nearby.</div>';
     return;
@@ -2048,23 +2170,30 @@ function renderVenueList() {
     </div>
   `;
 
-  const listHtml = getSortedVenues().map((v, i) => `
-    <div class="venue-card ${i === 0 ? 'top-pick' : ''} ${v.id === (state.chosenVenue ? state.chosenVenue.id : state.results[0].id) ? 'active' : ''}" data-vid="${v.id}" onclick="selectVenue(${v.id})">
-      <div class="venue-photo-placeholder${v.photo ? ' photo-loading' : ''}" data-photo-vid="${v.id}" style="background:${FALLBACK_COLORS[v.icon] || '#6366F1'};cursor:pointer" onclick="event.stopPropagation(); ${v.placeId ? 'openGoogleMapsPlace(\'' + v.placeId + '\')' : 'bookVenue(\'' + encodeURIComponent(v.name) + '\')'}"><i class="fa-solid ${v.photo ? 'fa-spinner fa-spin' : v.icon}"></i></div>
-      <div class="venue-rank">${i + 1}</div>
+  const sortedVenues = getSortedVenues();
+  const listHtml = sortedVenues.map((v, i) => `
+    <div class="venue-card ${i === 0 ? 'top-pick' : ''} ${v.id === (state.chosenVenue ? state.chosenVenue.id : getSortedVenues()[0].id) ? 'active' : ''}" data-vid="${v.id}" onclick="selectVenue(${v.id})">
+      <div class="venue-photo-placeholder${v.photo ? ' photo-loading' : ''}" data-photo-vid="${v.id}" style="background:${FALLBACK_COLORS[v.icon] || '#6366F1'};cursor:pointer" onclick="event.stopPropagation(); ${v.placeId ? 'openGoogleMapsPlace(\'' + v.placeId + '\')' : v._isCustom ? 'openCustomPlace(' + v.lat + ',' + v.lng + ')' : 'bookVenue(\'' + encodeURIComponent(v.name) + '\')'}"><i class="fa-solid ${v.photo ? 'fa-spinner fa-spin' : v.icon}"></i></div>
+      <div class="venue-rank">${getVenueLabel(v, sortedVenues)}</div>
       <div class="venue-info">
-        <div class="venue-name">${escapeHtml(v.name)}</div>
-        <div class="venue-type"><i class="fa-solid ${v.icon}"></i> ${escapeHtml(v.type)}</div>
+        <div class="venue-name-row">
+          <div class="venue-name">${escapeHtml(v.name)}</div>
+          ${v._isCustom ? '<button class="custom-place-remove" aria-label="Remove ' + escapeHtml(v.name) + '" title="Remove place" onclick="event.stopPropagation(); removeCustomPlace(' + v.id + ')"><i class="fa-solid fa-xmark"></i></button>' : ''}
+        </div>
+        ${v._isCustom ? '' : '<div class="venue-type"><i class="fa-solid ' + v.icon + '"></i> ' + escapeHtml(v.type) + '</div>'}
         <div class="venue-meta">
           ${v.rating ? '<span class="stars"><i class="fa-solid fa-star"></i> ' + v.rating + '</span>' : ''}
           ${v.userRatingsTotal ? '<span>(' + v.userRatingsTotal + ')</span>' : ''}
           <span>${escapeHtml(v.price)}</span>
         </div>
         ${v._overlapNote ? '<div class="venue-overlap-note"><i class="fa-solid fa-sparkles"></i> ' + escapeHtml(v._overlapNote) + '</div>' : ''}
+        ${v._isCustom && v._routeData ? '<div class="custom-place-distances">' + v._routeData.map(function(d) { return '<span><strong>' + escapeHtml(d.loc.name) + '</strong> ' + d.distKm.toFixed(1) + ' km</span>'; }).join('') + '</div>' : ''}
       </div>
       <div class="venue-actions">
         ${v.placeId
           ? '<button class="btn-tiny" onclick="event.stopPropagation(); openGoogleMapsPlace(\'' + v.placeId + '\')">View</button>'
+          : v._isCustom
+            ? '<button class="btn-tiny" onclick="event.stopPropagation(); openCustomPlace(' + v.lat + ',' + v.lng + ')">View</button>'
           : '<button class="btn-tiny" onclick="event.stopPropagation(); bookVenue(\'' + encodeURIComponent(v.name) + '\')">Search</button>'
         }
         <button class="btn-tiny book" onclick="event.stopPropagation(); selectVenue(${v.id}); showShareModal()"><i class="fa-solid fa-share-nodes"></i> Share</button>
@@ -2086,7 +2215,7 @@ function renderVenueList() {
   // Toggle expanded mode: scroll only when showing more than 5
   const layout = document.querySelector('.results-layout-inline');
   if (layout) {
-    if (state.results.length > 5) layout.classList.add('expanded');
+    if (getDisplayedVenues().length > 5) layout.classList.add('expanded');
     else layout.classList.remove('expanded');
   }
 
@@ -2108,6 +2237,7 @@ function renderVenueList() {
     img.onclick = function(e) {
       e.stopPropagation();
       if (v.placeId) openGoogleMapsPlace(v.placeId);
+      else if (v._isCustom) openCustomPlace(v.lat, v.lng);
       else bookVenue(v.name);
     };
     img.onload = function() {
@@ -2140,7 +2270,7 @@ function escapeHtml(str) {
 }
 
 function selectVenue(vid) {
-  state.chosenVenue = state.results.find(v => v.id === vid);
+  state.chosenVenue = getDisplayedVenues().find(v => v.id === vid);
   _currentShareCode = null;
   _currentShareResultsKey = null;
   document.querySelectorAll('.venue-card').forEach(c => c.classList.remove('active'));
@@ -2149,7 +2279,7 @@ function selectVenue(vid) {
   if (!state.chosenVenue) return;
   logVenueInteraction(state.chosenVenue, 'select', {
     venue_rating: state.chosenVenue.rating || null,
-    venue_rank: state.results.findIndex(v => v.id === vid) + 1,
+    venue_rank: getSortedVenues().findIndex(v => v.id === vid) + 1,
   });
 
   // Use cached route data if available and has real driving data, otherwise fetch
@@ -2171,21 +2301,57 @@ function selectVenue(vid) {
   }
 }
 
+function removeCustomPlace(vid) {
+  const removed = state.customPlaces.find(function(venue) { return venue.id === vid; });
+  if (!removed) return;
+  state.customPlaces = state.customPlaces.filter(function(venue) { return venue.id !== vid; });
+  _currentShareCode = null;
+  _currentShareResultsKey = null;
+  trackEvent('custom_place_removed', { name: removed.name, customPlaceCount: state.customPlaces.length });
+
+  if (!state.chosenVenue || state.chosenVenue.id !== vid) {
+    renderVenueList();
+    renderMap(
+      { lat: state.chosenVenue.lat, lng: state.chosenVenue.lng },
+      state._distanceData
+    );
+    return;
+  }
+
+  state.chosenVenue = getSortedVenues()[0] || null;
+  if (!state.chosenVenue) return;
+  selectVenue(state.chosenVenue.id);
+  renderVenueList();
+}
+
 // ---------- Venue Sorting ----------
 function getSortedVenues() {
-  const venues = [...state.results];
+  const customPlaces = state.customPlaces.slice().reverse();
+  const venues = state.results.slice();
   switch (state._sortMode) {
     case 'rating':
-      return venues.sort((a, b) => b.rating - a.rating);
+      venues.sort((a, b) => b.rating - a.rating);
+      break;
     case 'cheapest':
-      return venues.sort((a, b) => {
+      venues.sort((a, b) => {
         const priceOrder = { 'Free': 0, '$': 1, '$$': 2, '$$$': 3, '$$$$': 4 };
         return (priceOrder[a.price] ?? 2) - (priceOrder[b.price] ?? 2);
       });
+      break;
     case 'closest':
     default:
-      return venues.sort((a, b) => a._score - b._score);
+      venues.sort((a, b) => a._score - b._score);
+      break;
   }
+  return customPlaces.concat(venues);
+}
+
+function getVenueLabel(venue, orderedVenues) {
+  const sameTypeVenues = orderedVenues.filter(function(item) {
+    return !!item._isCustom === !!venue._isCustom;
+  });
+  const index = sameTypeVenues.findIndex(function(item) { return item.id === venue.id; });
+  return venue._isCustom ? String.fromCharCode(65 + index) : String(index + 1);
 }
 
 function sortVenues(mode) {
@@ -2224,7 +2390,7 @@ async function loadMoreOptions() {
 }
 
 function openGoogleMapsPlace(placeId) {
-  const venue = state.results.find(v => v.placeId === placeId);
+  const venue = getDisplayedVenues().find(v => v.placeId === placeId);
   const query = venue ? encodeURIComponent(venue.name) : '';
   var a = document.createElement('a');
   a.href = 'https://www.google.com/maps/search/?api=1&query=' + query + '&query_place_id=' + encodeURIComponent(placeId);
@@ -2241,6 +2407,10 @@ function openGoogleMapsPlace(placeId) {
   }
 }
 
+function openCustomPlace(lat, lng) {
+  window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng), '_blank', 'noopener,noreferrer');
+}
+
 function bookVenue(name) {
   const decoded = decodeURIComponent(name);
   const q = encodeURIComponent(decoded + ' restaurant reservation');
@@ -2249,7 +2419,7 @@ function bookVenue(name) {
 
 function getDirections(lat, lng) {
   window.open('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng, '_blank', 'noopener,noreferrer');
-  const venue = state.results.find(v => v.lat === lat && v.lng === lng);
+  const venue = getDisplayedVenues().find(v => v.lat === lat && v.lng === lng);
   if (venue) {
     logVenueInteraction(venue, 'directions');
     trackEvent('venue_directions', { venueName: venue.name, venuePlaceId: venue.placeId });
@@ -2399,7 +2569,7 @@ function renderMap(center, distanceData, venueOverride) {
   sortedVenues.forEach((v, i) => {
     const vIcon = L.divIcon({
       className: '',
-      html: '<div class="venue-marker">' + (i + 1) + '</div>',
+      html: '<div class="venue-marker">' + getVenueLabel(v, sortedVenues) + '</div>',
       iconSize: [28, 28],
       iconAnchor: [14, 14],
     });
@@ -2597,7 +2767,7 @@ function showShareModal() {
     venueName: state.chosenVenue ? state.chosenVenue.name : null,
   });
 
-  const v = state.chosenVenue || (state.results[0] || null);
+  const v = state.chosenVenue || (getDisplayedVenues()[0] || null);
   _populateShareCard(v, null);
 
   // Fetch Place Details for opening hours
@@ -2763,7 +2933,8 @@ function buildShareSnapshot() {
     };
   }
 
-  var v = state.chosenVenue || (state.results[0] || null);
+  var displayedVenues = getDisplayedVenues();
+  var v = state.chosenVenue || (displayedVenues[0] || null);
   return {
     locations: state.locations.map(function(l) {
       return { name: l.name, address: l.address, lat: l.lat, lng: l.lng };
@@ -2771,7 +2942,7 @@ function buildShareSnapshot() {
     mode: state.mode,
     category: state.category,
     vibe: state.vibe,
-    results: state.results.map(function(rv) {
+    results: displayedVenues.map(function(rv) {
       return {
         name: rv.name, type: rv.type, rating: rv.rating,
         userRatingsTotal: rv.userRatingsTotal, price: rv.price,
@@ -2781,9 +2952,10 @@ function buildShareSnapshot() {
         _overlapNote: rv._overlapNote || null,
         _realDists: rv._realDists || null,
         _realTimes: rv._realTimes || null,
+        _isCustom: !!rv._isCustom,
       };
     }),
-    chosenVenueIndex: v ? state.results.findIndex(function(r) { return r === v; }) : 0,
+    chosenVenueIndex: v ? displayedVenues.findIndex(function(r) { return r === v; }) : 0,
     distanceData: (state._distanceData || []).map(function(d) {
       return { locName: d.loc.name, distKm: d.distKm, durationMin: d.durationMin, routePoints: d.routePoints || [] };
     }),
@@ -2884,21 +3056,6 @@ async function copyShareMessage() {
     var sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
-  });
-}
-
-function copyInviteLink() {
-  if (!state.groupId) {
-    if (!_supabaseClient) {
-      var fallback = window.location.origin || 'https://mway.vercel.app';
-      navigator.clipboard.writeText(fallback).then(function() { showToast('Invite link copied!'); });
-      return;
-    }
-    createGroup();
-  }
-  var link = window.location.origin + window.location.pathname + '?group=' + state.groupId;
-  navigator.clipboard.writeText(link).then(function() {
-    showToast('Invite link copied! Share it with your friends.');
   });
 }
 
@@ -3052,12 +3209,17 @@ async function loadSharedSession() {
   });
 
   // Rebuild results
-  state.results = snap.results.map(function(rv, i) {
-    rv.id = i + 1;
+  var nextSuggestedId = 1;
+  var nextCustomId = -1;
+  var restoredVenues = snap.results.map(function(rv) {
+    rv.id = rv._isCustom ? nextCustomId-- : nextSuggestedId++;
     return rv;
   });
+  state.results = restoredVenues.filter(function(rv) { return !rv._isCustom; });
+  state.customPlaces = restoredVenues.filter(function(rv) { return rv._isCustom; });
+  state.nextCustomPlaceId = nextCustomId;
   state._allVenues = state.results.slice();
-  state.chosenVenue = state.results[snap.chosenVenueIndex || 0] || state.results[0];
+  state.chosenVenue = restoredVenues[snap.chosenVenueIndex || 0] || restoredVenues[0];
 
   // Rebuild distance data (using snapshot distances, keyed to shared locations)
   var venueLat = state.chosenVenue.lat;
@@ -3101,13 +3263,6 @@ async function loadSharedSession() {
 }
 
 // ---------- Group / Invite (Real-time) ----------
-function generateGroupCode() {
-  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  var code = '';
-  for (var i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-  return code;
-}
-
 function getOrCreateMemberId() {
   var id = localStorage.getItem('midway_member_id');
   if (!id) {
@@ -3151,27 +3306,8 @@ function initGroup() {
         state.groupCreatedAt = serverCreated;
         state.memberId = getOrCreateMemberId();
         joinGroupChannel();
-        updateInviteUI();
       });
   }
-}
-
-function createGroup() {
-  state.groupId = generateGroupCode();
-  state.groupCreatedAt = Date.now();
-  state.memberId = getOrCreateMemberId();
-  var url = new URL(window.location.href);
-  url.searchParams.set('group', state.groupId);
-  window.history.replaceState({}, '', url);
-
-  // Register group in database
-  if (_supabaseClient) {
-    _supabaseClient.from('groups').insert({ code: state.groupId, created_by: state.memberId }).then(function() {});
-  }
-
-  joinGroupChannel();
-  updateInviteUI();
-  trackEvent('group_create', { groupId: state.groupId });
 }
 
 function joinGroupChannel() {
@@ -3276,7 +3412,6 @@ function syncGroupMembers(presenceState) {
   state.groupMembers = newMembers;
   renderGroupMembers();
   updateFindButton();
-  updateGroupMemberCount();
   showYouHint();
 
   // Warn if results exist but group has changed since generation
@@ -3336,37 +3471,6 @@ function renderGroupMembers() {
       list.appendChild(row);
     });
   });
-}
-
-function updateInviteUI() {
-  var bar = document.querySelector('.invite-bar');
-  if (!bar) return;
-
-  if (state.groupId) {
-    var personCount = document.querySelectorAll('.location-row:not(.remote-member)').length;
-    Object.keys(state.groupMembers).forEach(function(key) {
-      personCount += (state.groupMembers[key].length || 1);
-    });
-    bar.innerHTML =
-      '<div class="group-active-bar">' +
-        '<span class="group-badge"><i class="fa-solid fa-users"></i> Group: ' + state.groupId + '</span>' +
-        '<span class="group-member-count" id="groupMemberCount">' + personCount + (personCount === 1 ? ' person' : ' people') + '</span>' +
-        '<button class="btn btn-ghost btn-sm" onclick="copyInviteLink()">' +
-          '<i class="fa-solid fa-copy"></i> Copy Link' +
-        '</button>' +
-      '</div>' +
-      '<p class="invite-subtext">Add friends together while still searching independently.</p>';
-  }
-}
-
-function updateGroupMemberCount() {
-  var el = document.getElementById('groupMemberCount');
-  if (!el) return;
-  var count = 1; // this user
-  Object.keys(state.groupMembers).forEach(function(key) {
-    count += (state.groupMembers[key].length || 1);
-  });
-  el.textContent = count + (count === 1 ? ' person' : ' people');
 }
 
 // ---------- Test Mode ----------
@@ -3513,7 +3617,14 @@ document.addEventListener('DOMContentLoaded', function() {
   document.addEventListener('keydown', function(e) {
     if (e.key !== 'Enter') return;
     var active = document.activeElement;
-    // Skip if focused on a location autocomplete input (has data-id for Places Autocomplete)
+    if (active && active.id === 'customPlaceInput') {
+      var customPlaceAddBtn = document.getElementById('customPlaceAddBtn');
+      if (customPlaceAddBtn && !customPlaceAddBtn.disabled) {
+        e.preventDefault();
+        customPlaceAddBtn.click();
+      }
+      return;
+    }
     if (active && active.matches('input[data-id]')) return;
     var findBtn = document.getElementById('findBtn');
     if (findBtn && !findBtn.disabled) {

@@ -76,10 +76,7 @@
         <!-- Location Inputs + AI Agent -->
         <div class="locations-panel">
           <h3>
-            <i class="fa-solid fa-users"></i> Locations
-            <button class="btn-invite-inline" onclick="copyInviteLink()">
-              <i class="fa-solid fa-share-nodes"></i> Invite Friends
-            </button>
+            <i class="fa-solid fa-users"></i> Add the locations of your group
           </h3>
           <div id="locationsList" class="locations-list"></div>
           <button class="btn btn-outline btn-add-location" id="addLocationBtn" onclick="addLocationInput()">
@@ -90,7 +87,7 @@
         <!-- AI Agent + Action -->
         <div class="ai-agent-panel">
           <div class="ai-prompt-section" id="aiPromptSection">
-            <p class="ai-prompt-label"><i class="fa-solid fa-sparkles"></i>Tell our <b>AI Agent</b> the vibe you want</p>
+            <p class="ai-prompt-label"><i class="fa-solid fa-sparkles"></i>Tell our AI Agent the vibe you want</p>
             <div class="ai-prompt-wrap" id="aiPromptWrap">
               <input type="text" id="vibeInput" class="ai-prompt-input" oninput="runVibeCheck()" />
               <div class="cycling-placeholder" id="cyclingPlaceholder">
@@ -187,23 +184,6 @@
           </button>
         </div>
 
-        <!-- Reverse Search -->
-        <div class="reverse-search">
-          <p class="reverse-transition"><strong>Check a specific place instead</strong></p>
-          <div class="reverse-card">
-            <h3>Already have a place in mind?</h3>
-            <p class="reverse-sub">Check how far everyone would travel.</p>
-            <div class="reverse-input-row">
-              <div class="reverse-input-wrap">
-                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input type="text" id="reverseVenueInput" class="reverse-input" placeholder="Enter a venue or place..." autocomplete="off" oninput="onReverseInput()" />
-              </div>
-              <button class="btn btn-primary btn-lg btn-reverse" id="reverseBtn" onclick="runReverseSearch()" disabled>
-                <i class="fa-solid fa-location-crosshairs"></i> Show distances from everyone
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -218,11 +198,28 @@
     <!-- RESULTS SECTION (hidden until search) -->
     <div id="resultsSection" class="results-section" style="display:none">
       <div class="results-top-header">
-        <h3>Top Spots</h3>
+        <div class="results-header-sidebar">
+          <h3>Top Spots</h3>
+          <button class="btn-add-custom-place" id="addCustomPlaceToggle" onclick="toggleCustomPlaceComposer()">
+            <i class="fa-solid fa-plus"></i> Check a specific place
+          </button>
+        </div>
+        <label class="results-mode-toggle" id="resultsModeToggleWrap" hidden>
+          <input type="checkbox" id="resultsModeToggle" />
+          <span>Fair</span>
+          <span>Eco</span>
+        </label>
       </div>
 
       <div class="results-layout-inline">
         <div class="results-sidebar-inline">
+          <div class="custom-place-composer" id="customPlaceComposer" hidden>
+            <div class="custom-place-input-wrap">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <input type="text" id="customPlaceInput" class="custom-place-input" placeholder="Search for a place..." autocomplete="off" oninput="onCustomPlaceInput()" />
+            </div>
+            <button class="btn btn-primary" id="customPlaceAddBtn" onclick="addCustomPlace()" disabled>Check</button>
+          </div>
           <div class="results-list" id="resultsList"></div>
         </div>
         <div class="results-map-container-inline">
