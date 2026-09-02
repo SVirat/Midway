@@ -2269,9 +2269,9 @@ function renderMap(center, distanceData, venueOverride) {
     attributionControl: true,
   }).setView([center.lat, center.lng], 13);
 
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri',
+    maxZoom: 16,
   }).addTo(state.map);
 
   state.markers = [];
