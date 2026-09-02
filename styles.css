@@ -433,6 +433,13 @@ a {
   padding: var(--space-lg);
 }
 
+.ai-agent-panel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+}
+
 .locations-panel h3 {
   font-size: 0.88rem;
   font-weight: 600;
@@ -788,9 +795,7 @@ a {
 }
 
 .ai-prompt-section {
-  padding-top: var(--space-md);
-  margin-top: var(--space-md);
-  border-top: 1px solid var(--border);
+  margin-bottom: var(--space-md);
 }
 
 .ai-prompt-label {
@@ -2198,6 +2203,10 @@ a {
     padding: var(--space-md);
   }
 
+  .ai-agent-panel {
+    padding: var(--space-md);
+  }
+
   .location-row {
     gap: 6px;
   }
@@ -2634,6 +2643,10 @@ a {
 
   .locations-panel {
     padding: var(--space-sm) var(--space-md);
+  }
+
+  .ai-agent-panel {
+    padding: var(--space-md);
   }
 
   .location-row .name-input {
@@ -3494,7 +3507,7 @@ a {
 }
 
 .reverse-card {
-  background: var(--bg-card);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
